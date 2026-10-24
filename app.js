@@ -133,7 +133,7 @@ function startListeners(){
   }
 }
 let booted=false, currentPage='Home';
-function onNotMember(){ stopListeners(); showAuth('authNotMember'); $('notMemberText').innerHTML = `<b>${esc(state.email)}</b> isn’t on the member list yet. If you just signed up, Jordan will add you shortly — you’ll get an email. Otherwise sign up first, or check with Jordan.`; }
+function onNotMember(){ stopListeners(); showAuth('authNotMember'); $('notMemberText').innerHTML = `<b>${esc(state.email)}</b> isn’t on the member list yet. If you just signed up, Jordan will add you shortly and text or email you when you’re in. Otherwise sign up first, or check with Jordan.`; }
 function afterData(){
   if(!Object.values(state.ready).every(Boolean)) return;
   if(!me() && !state.isAdmin){ onNotMember(); return; }
@@ -383,6 +383,7 @@ function openPlayerSheet(id){
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-primary btn-sm" onclick="adminSavePlayer('${esc(id)}')">Save</button>
           <button class="btn ${p.active===false?'btn-green':'btn-danger'} btn-sm" onclick="adminToggleActive('${esc(id)}',${p.active===false})">${p.active===false?'Reactivate':'Mark Inactive'}</button>
+          <button class="btn btn-secondary btn-sm" onclick="openWelcome('${esc(id)}')">Send welcome</button>
           <button class="btn btn-secondary btn-sm" style="color:var(--red)" onclick="adminDeletePlayer('${esc(id)}')">Delete player</button>
         </div>
         <div style="font-size:11.5px;color:var(--fg2);margin-top:8px;line-height:1.4">Mark Inactive hides them from the draws but keeps their history. Delete removes the player record entirely (their past matches stay on the record under their email).</div>
@@ -597,6 +598,7 @@ async function approveSignup(id){
     await db.collection('players').doc(email).set(doc,{merge:true});
     await db.collection('signups').doc(id).update({status:'approved',approvedAt:FieldValue.serverTimestamp()});
     toast(`${doc.name} added to the ladder ✓`);
+    setTimeout(()=>openWelcome(email),350);
   }catch(e){ toast('Could not approve: '+e.message); }
 }
 async function declineSignup(id){ try{ await db.collection('signups').doc(id).update({status:'declined'}); toast('Declined'); }catch(e){ toast('Could not update: '+e.message); } }
@@ -649,7 +651,8 @@ async function addPlayer(){
       singles,doubles,mixed,active:true,baseSingles:base,baseDoubles:base,baseMixed:base,billingStart:'2027-01-01',availability:'',createdAt:FieldValue.serverTimestamp(),approvedBy:state.email
     });
     ['addName','addEmail','addPhone','addUTRS','addUTRD'].forEach(id=>$(id).value='');
-    toast(`${name} added — they can sign in with ${email}`);
+    toast(`${name} added to the ladder ✓`);
+    setTimeout(()=>openWelcome(email),350);
   }catch(e){ toast('Could not add: '+e.message); }
 }
 async function adminSavePlayer(id){
@@ -662,6 +665,38 @@ async function adminSavePlayer(id){
     });
     toast('Saved'); closeSheet('playerSheet');
   }catch(e){ toast('Could not save: '+e.message); }
+}
+// ── welcome message (sent from the admin's own phone; no email service needed) ──
+const APP_URL='https://jpboyls-crypto.github.io/gold-river-ladder/';
+function welcomeText(p){
+  const first=(p.name||'').split(' ')[0]||'there';
+  const draws=playerLadders(p).map(t=>LADDERS[t].label).join(', ');
+  return `Hi ${first}, you're in! Welcome to the Gold River Tennis Ladder${draws?' ('+draws+')':''}.\n\n`+
+    `1) Open the app: ${APP_URL}\n`+
+    `2) Sign in with ${p.email} \u2014 it emails you a one-tap sign-in link (check spam the first time).\n`+
+    `3) Add it to your home screen: Profile \u2192 Install on your phone.\n\n`+
+    `Play is free until the official season starts Jan 1, 2027. Challenge someone or post on the Practice tab to find a hit.\n\n\u2014 Jordan`;
+}
+function smsHref(phone,body){ const n=(phone||'').replace(/\D/g,''); const ios=/iPad|iPhone|iPod/.test(navigator.userAgent); return `sms:${n}${ios?'&':'?'}body=${encodeURIComponent(body)}`; }
+function openWelcome(id){
+  const p=getPlayer(id); if(!p) return;
+  const body=welcomeText(p);
+  $('sheetName').textContent='Send welcome';
+  $('sheetBody').innerHTML=`
+    <div style="font-size:13.5px;color:var(--fg2);line-height:1.5;margin-bottom:12px"><b style="color:var(--fg)">${esc(p.name)}</b> is on the ladder. The app doesn\u2019t send emails on its own, so send them this welcome from your phone \u2014 it opens your Messages or Mail app with everything filled in.</div>
+    <pre style="white-space:pre-wrap;word-break:break-word;font:13px/1.5 Inter,system-ui,sans-serif;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px" id="welcomeBody">${esc(body)}</pre>
+    <div style="display:grid;gap:8px">
+      ${p.phone?`<a class="btn btn-green btn-full" href="${esc(smsHref(p.phone,body))}">Text it to ${esc(p.phone)}</a>`:''}
+      <a class="btn ${p.phone?'btn-secondary':'btn-green'} btn-full" href="mailto:${esc(p.email)}?subject=${encodeURIComponent('You\u2019re on the Gold River Tennis Ladder')}&body=${encodeURIComponent(body)}">Email it to ${esc(p.email)}</a>
+      <button class="btn btn-secondary btn-full" onclick="copyWelcome(this)">Copy message</button>
+      <button class="btn btn-secondary btn-full" onclick="closeSheet('playerSheet')">Done</button>
+    </div>`;
+  $('playerSheet').classList.add('open');
+}
+async function copyWelcome(btn){
+  const t=$('welcomeBody').textContent;
+  try{ await navigator.clipboard.writeText(t); btn.textContent='Copied \u2713'; }
+  catch(e){ const r=document.createRange(); r.selectNodeContents($('welcomeBody')); const s=getSelection(); s.removeAllRanges(); s.addRange(r); btn.textContent='Selected \u2014 tap Copy'; }
 }
 let pendingPlayerDelete=null;
 async function adminDeletePlayer(id){
