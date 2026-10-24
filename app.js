@@ -357,7 +357,9 @@ function openPlayerSheet(id){
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-primary btn-sm" onclick="adminSavePlayer('${esc(id)}')">Save</button>
           <button class="btn ${p.active===false?'btn-green':'btn-danger'} btn-sm" onclick="adminToggleActive('${esc(id)}',${p.active===false})">${p.active===false?'Reactivate':'Mark Inactive'}</button>
+          <button class="btn btn-secondary btn-sm" style="color:var(--red)" onclick="adminDeletePlayer('${esc(id)}')">Delete player</button>
         </div>
+        <div style="font-size:11.5px;color:var(--fg2);margin-top:8px;line-height:1.4">Mark Inactive hides them from the draws but keeps their history. Delete removes the player record entirely (their past matches stay on the record under their email).</div>
       </div>`:''}`;
   $('playerSheet').classList.add('open');
 }
@@ -632,6 +634,12 @@ async function adminSavePlayer(id){
     });
     toast('Saved'); closeSheet('playerSheet');
   }catch(e){ toast('Could not save: '+e.message); }
+}
+let pendingPlayerDelete=null;
+async function adminDeletePlayer(id){
+  if(pendingPlayerDelete!==id){ pendingPlayerDelete=id; toast('Tap Delete again to confirm'); setTimeout(()=>{ if(pendingPlayerDelete===id) pendingPlayerDelete=null; },4000); return; }
+  pendingPlayerDelete=null;
+  try{ await db.collection('players').doc(id).delete(); toast('Player deleted'); closeSheet('playerSheet'); }catch(e){ toast('Could not delete: '+e.message); }
 }
 async function adminToggleActive(id,makeActive){
   try{ await db.collection('players').doc(id).update({active:makeActive}); toast(makeActive?'Reactivated':'Marked inactive'); closeSheet('playerSheet'); }catch(e){ toast('Could not update: '+e.message); }
