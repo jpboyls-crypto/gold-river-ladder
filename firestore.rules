@@ -55,6 +55,16 @@ service cloud.firestore {
       allow delete: if isAdmin() || (isMember() && resource.data.by == email());
     }
 
+    // ── events: admin manages; members may only add/remove themselves from rsvps ──
+    match /events/{eid} {
+      allow read: if canRead();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+                    || (isMember() && onlyKeys(['rsvps'])
+                        && request.resource.data.rsvps.toSet().difference(resource.data.rsvps.toSet()).union(
+                             resource.data.rsvps.toSet().difference(request.resource.data.rsvps.toSet())).hasOnly([email()]));
+    }
+
     // ── sign-ups from the public form: anyone may submit, only admin may see ──
     match /signups/{sid} {
       allow create: if request.resource.data.keys().hasAll(['name', 'email', 'status'])

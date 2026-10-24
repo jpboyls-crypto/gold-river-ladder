@@ -125,6 +125,18 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
 .day-picker span{font-size:12px;font-weight:600;padding:6px 10px;border-radius:7px;background:var(--surface2);color:var(--fg2);border:1px solid var(--border);cursor:pointer;user-select:none;transition:all .12s}
 .day-picker span.on{background:rgba(45,107,228,.18);color:var(--accent-hi);border-color:var(--accent)}
 .hit-tag{display:inline-block;font-size:11px;font-weight:600;padding:3px 8px;border-radius:6px;background:var(--surface2);color:var(--fg2);margin:2px 4px 2px 0}
+.ev{padding:14px 16px;border-bottom:1px solid var(--border)}
+.ev:last-child{border-bottom:none}
+.ev-top{display:flex;gap:12px;align-items:flex-start}
+.ev-date{flex:none;width:52px;text-align:center;border-radius:10px;padding:6px 0;background:var(--surface2)}
+.ev-date .mo{font-size:10.5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase}
+.ev-date .dy{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:26px;line-height:1}
+.ev-title{font-weight:700;font-size:15.5px;line-height:1.3}
+.ev-meta{font-size:12.5px;color:var(--fg2);margin-top:3px;line-height:1.45}
+.ev-desc{font-size:13.5px;margin-top:8px;line-height:1.5;white-space:pre-wrap}
+.ev-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.ev-type{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;padding:2px 7px;border-radius:5px;margin-bottom:4px}
+.nav-btn{min-width:0}
 .draw-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--surface2);border-radius:10px;padding:4px;margin-bottom:16px}
 .draw-grid .tab{padding:10px 6px;font-size:13.5px;cursor:pointer}
 .draw-grid .tab-wide{grid-column:1 / -1}
@@ -291,6 +303,7 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
     </div>
   </div>
   <div class="pad">
+    <div id="homeEvent"></div>
     <div class="section-head">Pending Challenges</div>
     <div class="card" id="pendingList"></div>
     <div class="section-head" style="margin-top:8px">Recent Matches</div>
@@ -432,6 +445,20 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
       <div class="tab" onclick="switchHit('mine',this)">Mine</div>
     </div>
     <div id="hitList"></div>
+  </div>
+</div>
+
+<!-- EVENTS -->
+<div class="page" id="pageEvents">
+  <div class="pad">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:16px">
+      <div class="section-head" style="padding:0">Upcoming Ladder Events</div>
+      <button class="btn btn-primary btn-sm" id="addEventBtn" hidden onclick="openEventForm()">+ Add event</button>
+    </div>
+    <div id="seedBox" hidden style="margin-top:12px"></div>
+    <div id="eventList" style="margin-top:12px"></div>
+    <button class="btn btn-secondary btn-full" id="pastToggle" style="margin-top:16px" onclick="togglePast()">Show past events</button>
+    <div id="pastList" hidden style="margin-top:12px"></div>
   </div>
 </div>
 
@@ -644,6 +671,10 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
     <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
     Practice
   </button>
+  <button class="nav-btn" onclick="goPage('Events',this)" id="navEvents">
+    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    Events
+  </button>
   <button class="nav-btn" onclick="goPage('Profile',this)" id="navProfile">
     <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
     Profile
@@ -669,6 +700,6 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
 <!-- TOAST -->
 <div id="toast" style="position:fixed;bottom:calc(72px + env(safe-area-inset-bottom,0px) + 12px);left:50%;transform:translateX(-50%) translateY(10px);background:#222b3d;color:#fff;padding:10px 20px;border-radius:30px;font-size:14px;font-weight:600;z-index:500;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;white-space:nowrap"></div>
 
-<script src="app.js?v=20261024f"></script>
+<script src="app.js?v=20261024g"></script>
 </body>
 </html>

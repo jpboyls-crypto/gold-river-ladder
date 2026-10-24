@@ -32,6 +32,7 @@ let state = {
   challenges: [],
   hits: [],
   signups: [],
+  events: [],
   activeLadder: 'ms',
   ready: {players:false, matches:false, challenges:false, hits:false}
 };
@@ -120,13 +121,14 @@ completeLinkSignIn();
 // ═══════════════════════════════════════════
 //  FIRESTORE LISTENERS
 // ═══════════════════════════════════════════
-function stopListeners(){ unsubs.forEach(u=>u()); unsubs=[]; state.players=[];state.matches=[];state.challenges=[];state.hits=[];state.signups=[]; Object.keys(state.ready).forEach(k=>state.ready[k]=false); }
+function stopListeners(){ unsubs.forEach(u=>u()); unsubs=[]; state.players=[];state.matches=[];state.challenges=[];state.hits=[];state.signups=[];state.events=[]; Object.keys(state.ready).forEach(k=>state.ready[k]=false); }
 function startListeners(){
   stopListeners();
   const onErr = name => e => { console.error(name, e); if(e.code==='permission-denied'){ onNotMember(); } };
   unsubs.push(db.collection('players').onSnapshot(s=>{ state.players=s.docs.map(d=>({id:d.id,...d.data()})); state.ready.players=true; afterData(); }, onErr('players')));
   unsubs.push(db.collection('matches').orderBy('date','desc').onSnapshot(s=>{ state.matches=s.docs.map(d=>({id:d.id,...d.data()})); state.ready.matches=true; afterData(); }, onErr('matches')));
   unsubs.push(db.collection('challenges').onSnapshot(s=>{ state.challenges=s.docs.map(d=>({id:d.id,...d.data()})); state.ready.challenges=true; afterData(); }, onErr('challenges')));
+  unsubs.push(db.collection('events').onSnapshot(s=>{ state.events=s.docs.map(d=>({id:d.id,...d.data()})); if(booted) rerender(); }, e=>{ console.warn('events unavailable', e); }));
   unsubs.push(db.collection('hits').onSnapshot(s=>{ state.hits=s.docs.map(d=>({id:d.id,...d.data()})); state.ready.hits=true; afterData(); }, onErr('hits')));
   if(state.isAdmin){
     unsubs.push(db.collection('signups').onSnapshot(s=>{ state.signups=s.docs.map(d=>({id:d.id,...d.data()})); renderSignupBadge(); if(currentPage==='Admin') renderAdmin(); }, onErr('signups')));
@@ -143,7 +145,7 @@ function afterData(){
     $('adminBadge').hidden = !state.isAdmin;
     $('navAdmin').hidden = !state.isAdmin;
     let h = (location.hash||'').replace('#','');
-    const map={home:'Home',ladder:'Ladder',challenge:'Challenge',practice:'Practice',profile:'Profile',admin:'Admin',install:'Install'};
+    const map={home:'Home',ladder:'Ladder',challenge:'Challenge',practice:'Practice',events:'Events',profile:'Profile',admin:'Admin',install:'Install'};
     if(!map[h]) h = (state.isAdmin && !me()) ? 'admin' : 'home';
     goPage(map[h], $('nav'+map[h]));
   } else {
@@ -155,6 +157,7 @@ function rerender(){
   if(currentPage==='Ladder') renderLadder();
   if(currentPage==='Challenge') initChallengePage(true);
   if(currentPage==='Practice') renderPractice();
+  if(currentPage==='Events') renderEvents();
   if(currentPage==='Profile') renderProfile();
   if(currentPage==='Admin') renderAdmin();
 }
@@ -232,6 +235,7 @@ function goPage(name,btn){
 //  HOME
 // ═══════════════════════════════════════════
 function renderHome(){
+  renderHomeEvent();
   const m=me();
   if(!m){ // admin without a player record
     $('heroName').textContent='Admin'; $('heroRank').textContent='You’re signed in as the ladder admin.';
@@ -710,6 +714,163 @@ async function adminDeletePlayer(id){
 }
 async function adminToggleActive(id,makeActive){
   try{ await db.collection('players').doc(id).update({active:makeActive}); toast(makeActive?'Reactivated':'Marked inactive'); closeSheet('playerSheet'); }catch(e){ toast('Could not update: '+e.message); }
+}
+
+
+// ═══════════════════════════════════════════
+//  EVENTS (quarterly tournaments, socials, etc.)
+// ═══════════════════════════════════════════
+const EVENT_TYPES={
+  tournament:{label:'Ladder Tournament',icon:'🏆',color:'var(--gold)',bg:'rgba(232,184,75,.15)',join:'Enter',joined:'Entered \u2713',who:'entered'},
+  social:{label:'Social',icon:'🎉',color:'var(--purple)',bg:'rgba(155,114,240,.15)',join:"I'm going",joined:'Going \u2713',who:'going'},
+  clinic:{label:'Clinic / Drill',icon:'🎾',color:'var(--green)',bg:'rgba(58,170,106,.15)',join:"I'm in",joined:'In \u2713',who:'in'},
+  other:{label:'Other',icon:'📌',color:'var(--accent-hi)',bg:'rgba(45,107,228,.15)',join:"I'm going",joined:'Going \u2713',who:'going'}
+};
+let showPast=false;
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function parseDay(d){ const [y,m,dd]=(d||'').split('-').map(Number); return new Date(y,(m||1)-1,dd||1); }
+function fmtTime(t){ if(!t) return ''; let [h,m]=t.split(':').map(Number); const ap=h>=12?'PM':'AM'; h=h%12||12; return `${h}${m?':'+String(m).padStart(2,'0'):''} ${ap}`; }
+function fmtWhen(e){ const d=parseDay(e.date); const day=d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}); const t=e.start?(fmtTime(e.start)+(e.end?'\u2013'+fmtTime(e.end):'')):''; return day+(t?' \u00b7 '+t:''); }
+function upcomingEvents(){ const t=today(); return state.events.filter(e=>(e.date||'')>=t).sort((a,b)=>(a.date+(a.start||'')).localeCompare(b.date+(b.start||''))); }
+function pastEvents(){ const t=today(); return state.events.filter(e=>(e.date||'')<t).sort((a,b)=>b.date.localeCompare(a.date)); }
+function calStamp(date,time){ return date.replace(/-/g,'')+(time?'T'+time.replace(':','')+'00':''); }
+function googleCalUrl(e){
+  const allDay=!e.start; const start=calStamp(e.date,e.start);
+  let end; if(allDay){ const d=parseDay(e.date); d.setDate(d.getDate()+1); end=d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0'); } else end=calStamp(e.date,e.end||e.start);
+  return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(e.title)+'&dates='+start+'/'+end+'&ctz=America/Los_Angeles&location='+encodeURIComponent(e.location||'')+'&details='+encodeURIComponent((e.description||'')+'\n\n'+APP_URL);
+}
+function icsHref(e){
+  const esc2=v=>String(v||'').replace(/\\/g,'\\\\').replace(/;/g,'\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
+  const allDay=!e.start;
+  const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Gold River Tennis Ladder//EN','BEGIN:VEVENT','UID:'+e.id+'@gold-river-ladder','DTSTAMP:'+new Date().toISOString().replace(/[-:]/g,'').split('.')[0]+'Z',
+    allDay?'DTSTART;VALUE=DATE:'+calStamp(e.date):'DTSTART;TZID=America/Los_Angeles:'+calStamp(e.date,e.start),
+    allDay?'':'DTEND;TZID=America/Los_Angeles:'+calStamp(e.date,e.end||e.start),
+    'SUMMARY:'+esc2(e.title),'LOCATION:'+esc2(e.location),'DESCRIPTION:'+esc2(e.description),'END:VEVENT','END:VCALENDAR'].filter(Boolean);
+  return 'data:text/calendar;charset=utf-8,'+encodeURIComponent(lines.join('\r\n'));
+}
+function eventCard(e,past){
+  const T=EVENT_TYPES[e.type]||EVENT_TYPES.other; const d=parseDay(e.date);
+  const rsvps=e.rsvps||[]; const mine=rsvps.includes(state.email); const full=e.capacity&&rsvps.length>=e.capacity&&!mine;
+  const names=rsvps.map(id=>esc(displayName(id).split(' ')[0])).join(', ');
+  return `<div class="ev" id="ev-${e.id}">
+    <div class="ev-top">
+      <div class="ev-date" style="background:${T.bg}"><div class="mo" style="color:${T.color}">${MONTHS[d.getMonth()]}</div><div class="dy">${d.getDate()}</div></div>
+      <div style="flex:1;min-width:0">
+        <span class="ev-type" style="background:${T.bg};color:${T.color}">${T.icon} ${T.label}</span>
+        <div class="ev-title">${esc(e.title)}</div>
+        <div class="ev-meta">${esc(fmtWhen(e))}${e.location?'<br>'+esc(e.location):''}</div>
+        ${e.eligibility?`<div class="ev-meta" style="color:var(--fg)"><b>Who:</b> ${esc(e.eligibility)}</div>`:''}
+      </div>
+    </div>
+    ${e.description?`<div class="ev-desc">${esc(e.description)}</div>`:''}
+    ${e.rsvpOn!==false?`<div class="ev-meta" style="margin-top:8px">${rsvps.length?`<b style="color:var(--fg)">${rsvps.length}${e.capacity?' / '+e.capacity:''}</b> ${T.who}: ${names}`:(e.capacity?`0 / ${e.capacity} spots taken`:'Nobody yet \u2014 be the first')}</div>`:''}
+    <div class="ev-actions">
+      ${!past&&e.rsvpOn!==false&&me()?`<button class="btn ${mine?'btn-secondary':'btn-primary'} btn-sm" ${full?'disabled style="opacity:.5"':''} onclick="toggleRsvp('${e.id}')">${mine?T.joined:(full?'Full':T.join)}</button>`:''}
+      ${!past?`<a class="btn btn-secondary btn-sm" href="${icsHref(e)}" download="${esc((e.title||'event').replace(/[^\w\- ]/g,''))}.ics">Apple Calendar</a><a class="btn btn-secondary btn-sm" href="${googleCalUrl(e)}" target="_blank" rel="noopener">Google Calendar</a>`:''}
+      ${state.isAdmin?`<button class="btn btn-secondary btn-sm" onclick="openEventForm('${e.id}')">Edit</button>`:''}
+    </div>
+  </div>`;
+}
+function renderEvents(){
+  $('addEventBtn').hidden=!state.isAdmin;
+  const up=upcomingEvents();
+  $('eventList').innerHTML=up.length?`<div class="card">${up.map(e=>eventCard(e,false)).join('')}</div>`
+    :`<div class="empty"><div class="empty-icon">📅</div><div class="empty-title">No upcoming events yet</div><div class="empty-sub">${state.isAdmin?'Add a social or set up the quarterly tournaments.':'Quarterly tournaments and socials will show up here.'}</div></div>`;
+  const hasQ = state.events.some(e=>e.type==='tournament'&&(e.date||'').startsWith('2027'));
+  $('seedBox').hidden=!(state.isAdmin&&!hasQ);
+  if(state.isAdmin&&!hasQ) $('seedBox').innerHTML=`<div class="card" style="padding:14px 16px;border-color:var(--gold)">
+      <div style="font-weight:700">🏆 Set up the 2027 quarterly tournaments</div>
+      <div style="font-size:12.5px;color:var(--fg2);margin:4px 0 10px;line-height:1.5">Adds four tournaments: Sat Mar 27, Sat Jun 26, Sat Sep 25 and Sat Dec 18 (moved off Christmas). You can edit any date, time or detail afterwards.</div>
+      <button class="btn btn-primary btn-sm" onclick="seedQuarterlies()">Add all four</button></div>`;
+  const past=pastEvents();
+  $('pastToggle').hidden=!past.length;
+  $('pastToggle').textContent=showPast?'Hide past events':`Show past events (${past.length})`;
+  $('pastList').hidden=!showPast;
+  $('pastList').innerHTML=showPast&&past.length?`<div class="card" style="opacity:.8">${past.map(e=>eventCard(e,true)).join('')}</div>`:'';
+}
+function togglePast(){ showPast=!showPast; renderEvents(); }
+function renderHomeEvent(){
+  const el=$('homeEvent'); if(!el) return;
+  const e=upcomingEvents()[0];
+  if(!e){ el.innerHTML=''; return; }
+  const T=EVENT_TYPES[e.type]||EVENT_TYPES.other; const d=parseDay(e.date); const going=(e.rsvps||[]).includes(state.email);
+  el.innerHTML=`<div class="section-head">Next Ladder Event</div>
+    <div class="card" style="padding:12px 14px;cursor:pointer;border-left:3px solid ${T.color}" onclick="goPage('Events',$('navEvents'))">
+      <div style="display:flex;gap:12px;align-items:center">
+        <div class="ev-date" style="background:${T.bg}"><div class="mo" style="color:${T.color}">${MONTHS[d.getMonth()]}</div><div class="dy">${d.getDate()}</div></div>
+        <div style="flex:1;min-width:0"><div class="ev-title">${T.icon} ${esc(e.title)}</div><div class="ev-meta">${esc(fmtWhen(e))}</div>
+          ${going?`<div class="ev-meta" style="color:var(--green);font-weight:600">You\u2019re ${T.who==='entered'?'entered':'going'} \u2713</div>`:''}</div>
+        <span style="color:var(--fg2);font-size:20px">\u203a</span>
+      </div></div>`;
+}
+async function toggleRsvp(id){
+  const e=state.events.find(x=>x.id===id); if(!e) return;
+  const mine=(e.rsvps||[]).includes(state.email); const T=EVENT_TYPES[e.type]||EVENT_TYPES.other;
+  if(!mine&&e.capacity&&(e.rsvps||[]).length>=e.capacity){ toast('Sorry \u2014 this one is full'); return; }
+  try{ await db.collection('events').doc(id).update({rsvps:mine?FieldValue.arrayRemove(state.email):FieldValue.arrayUnion(state.email)}); toast(mine?'Removed':(e.type==='tournament'?'You\u2019re entered! 🏆':'See you there! 🎉')); }
+  catch(err){ toast('Could not update: '+err.message); }
+}
+function openEventForm(id){
+  const e=id?state.events.find(x=>x.id===id):null;
+  const v=k=>esc(e&&e[k]!=null?e[k]:'');
+  $('sheetName').textContent=e?'Edit event':'New event';
+  $('sheetBody').innerHTML=`
+    <div class="form-group"><label class="form-label">Type</label>
+      <select id="evType" onchange="$('evEligGroup').hidden=this.value!=='tournament'">
+        ${Object.entries(EVENT_TYPES).map(([k,T])=>`<option value="${k}" ${(e?e.type:'social')===k?'selected':''}>${T.icon} ${T.label}</option>`).join('')}
+      </select></div>
+    <div class="form-group"><label class="form-label">Title</label><input type="text" id="evTitle" value="${v('title')}" placeholder="e.g. Holiday Ladder Mixer"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Date</label><input type="date" id="evDate" value="${v('date')}"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Start (optional)</label><input type="time" id="evStart" value="${v('start')}"></div>
+      <div class="form-group"><label class="form-label">End (optional)</label><input type="time" id="evEnd" value="${v('end')}"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Location</label><input type="text" id="evLoc" value="${e?v('location'):'Gold River Sports Club'}"></div>
+    <div class="form-group" id="evEligGroup" ${(e?e.type:'social')==='tournament'?'':'hidden'}><label class="form-label">Who can enter</label><input type="text" id="evElig" value="${v('eligibility')}" placeholder="e.g. Top 8 in each draw as of the Friday before"></div>
+    <div class="form-group"><label class="form-label">Details</label><textarea id="evDesc" rows="4" placeholder="Format, food & drinks, what to bring, cost…">${v('description')}</textarea></div>
+    <div class="form-row">
+      <div class="form-group"><label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-top:22px"><input type="checkbox" id="evRsvp" style="width:auto" ${!e||e.rsvpOn!==false?'checked':''}> Members can sign up</label></div>
+      <div class="form-group"><label class="form-label">Spots (optional)</label><input type="number" id="evCap" min="1" value="${v('capacity')}" placeholder="No limit"></div>
+    </div>
+    <div style="display:grid;gap:8px;margin-top:4px">
+      <button class="btn btn-primary btn-full" onclick="saveEvent(${e?`'${e.id}'`:'null'})">${e?'Save changes':'Add event'}</button>
+      ${e?`<button class="btn btn-secondary btn-full" style="color:var(--red)" onclick="deleteEvent('${e.id}')">Delete event</button>`:''}
+      ${e&&(e.rsvps||[]).length?`<div style="font-size:12.5px;color:var(--fg2);line-height:1.5;margin-top:6px"><b style="color:var(--fg)">Signed up (${e.rsvps.length}):</b> ${e.rsvps.map(id=>esc(displayName(id))).join(', ')}</div>`:''}
+    </div>`;
+  $('playerSheet').classList.add('open');
+}
+async function saveEvent(id){
+  const title=$('evTitle').value.trim(), date=$('evDate').value;
+  if(!title){ toast('Give the event a title'); return; }
+  if(!date){ toast('Pick a date'); return; }
+  const cap=parseInt($('evCap').value,10);
+  const data={type:$('evType').value,title:title.slice(0,100),date,start:$('evStart').value||'',end:$('evEnd').value||'',location:$('evLoc').value.trim().slice(0,120),
+    eligibility:$('evType').value==='tournament'?$('evElig').value.trim().slice(0,160):'',description:$('evDesc').value.trim().slice(0,1500),
+    rsvpOn:$('evRsvp').checked,capacity:cap>0?cap:null};
+  try{
+    if(id) await db.collection('events').doc(id).update(data);
+    else await db.collection('events').add({...data,rsvps:[],createdBy:state.email,createdAt:FieldValue.serverTimestamp()});
+    closeSheet('playerSheet'); toast(id?'Event updated':'Event added 📅');
+  }catch(err){ toast('Could not save: '+err.message); }
+}
+let pendingEventDelete=null;
+async function deleteEvent(id){
+  if(pendingEventDelete!==id){ pendingEventDelete=id; toast('Tap Delete again to confirm'); setTimeout(()=>{ if(pendingEventDelete===id) pendingEventDelete=null; },4000); return; }
+  pendingEventDelete=null;
+  try{ await db.collection('events').doc(id).delete(); closeSheet('playerSheet'); toast('Event deleted'); }catch(err){ toast('Could not delete: '+err.message); }
+}
+async function seedQuarterlies(){
+  const qs=[['2027-03-27','Q1'],['2027-06-26','Q2'],['2027-09-25','Q3'],['2027-12-18','Q4']];
+  try{
+    for(const [date,q] of qs){
+      await db.collection('events').add({type:'tournament',title:`${q} Ladder Tournament`,date,start:'08:00',end:'16:00',location:'Gold River Sports Club',
+        eligibility:'All active ladder players \u2014 seeded by current ladder rank',description:'Quarterly ladder tournament across all five draws. Format and draw sizes will be posted closer to the date.',
+        rsvpOn:true,capacity:null,rsvps:[],createdBy:state.email,createdAt:FieldValue.serverTimestamp()});
+    }
+    toast('2027 quarterly tournaments added 🏆');
+  }catch(err){ toast('Could not add: '+err.message); }
 }
 
 // ═══════════════════════════════════════════
