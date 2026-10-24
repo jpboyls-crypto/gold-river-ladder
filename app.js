@@ -687,7 +687,8 @@ function openWelcome(id){
     <pre style="white-space:pre-wrap;word-break:break-word;font:13px/1.5 Inter,system-ui,sans-serif;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px" id="welcomeBody">${esc(body)}</pre>
     <div style="display:grid;gap:8px">
       ${p.phone?`<a class="btn btn-green btn-full" href="${esc(smsHref(p.phone,body))}">Text it to ${esc(p.phone)}</a>`:''}
-      <a class="btn ${p.phone?'btn-secondary':'btn-green'} btn-full" href="mailto:${esc(p.email)}?subject=${encodeURIComponent('You\u2019re on the Gold River Tennis Ladder')}&body=${encodeURIComponent(body)}">Email it to ${esc(p.email)}</a>
+      <a class="btn ${p.phone?'btn-secondary':'btn-green'} btn-full" href="googlegmail:///co?to=${encodeURIComponent(p.email)}&subject=${encodeURIComponent('You\u2019re on the Gold River Tennis Ladder')}&body=${encodeURIComponent(body)}">Email it from the Gmail app</a>
+      <a class="btn btn-secondary btn-full" href="mailto:${esc(p.email)}?subject=${encodeURIComponent('You\u2019re on the Gold River Tennis Ladder')}&body=${encodeURIComponent(body)}">Email it from Mail</a>
       <button class="btn btn-secondary btn-full" onclick="copyWelcome(this)">Copy message</button>
       <button class="btn btn-secondary btn-full" onclick="closeSheet('playerSheet')">Done</button>
     </div>`;
