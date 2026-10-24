@@ -672,9 +672,12 @@ function welcomeText(p){
   const first=(p.name||'').split(' ')[0]||'there';
   const draws=playerLadders(p).map(t=>LADDERS[t].label).join(', ');
   return `Hi ${first}, you're in! Welcome to the Gold River Tennis Ladder${draws?' ('+draws+')':''}.\n\n`+
-    `1) Open the app: ${APP_URL}\n`+
-    `2) Sign in with ${p.email} \u2014 it emails you a one-tap sign-in link (check spam the first time).\n`+
-    `3) Add it to your home screen: Profile \u2192 Install on your phone.\n\n`+
+    `Getting set up takes 2 minutes:\n\n`+
+    `1) Open this link on your phone \u2014 in Safari on iPhone, Chrome on Android:\n${APP_URL}\n\n`+
+    `2) Add it to your home screen first.\n   iPhone: tap the Share button (square with the up arrow) \u2192 Add to Home Screen \u2192 Add.\n   Android: tap the \u22ee menu \u2192 Add to Home screen (or Install app).\n\n`+
+    `3) Open the new GR Ladder icon, enter ${p.email} and tap "Email me a sign-in link."\n\n`+
+    `4) In that email, don't tap the link \u2014 press and hold it, choose Copy Link, then go back to the ladder app, paste it in the box and tap Sign in. (Check spam the first time.)\n\n`+
+    `That's it \u2014 you'll stay signed in after that.\n\n`+
     `Play is free until the official season starts Jan 1, 2027. Challenge someone or post on the Practice tab to find a hit.\n\n\u2014 Jordan`;
 }
 function smsHref(phone,body){ const n=(phone||'').replace(/\D/g,''); const ios=/iPad|iPhone|iPod/.test(navigator.userAgent); return `sms:${n}${ios?'&':'?'}body=${encodeURIComponent(body)}`; }

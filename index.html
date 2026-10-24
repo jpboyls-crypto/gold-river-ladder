@@ -254,8 +254,8 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
     <button class="btn btn-primary btn-full" id="loginBtn" onclick="sendLink()">Email me a sign-in link</button>
     <div id="loginMsg" style="font-size:13px;color:var(--fg2);margin-top:12px;min-height:18px;line-height:1.5"></div>
     <div id="pasteBox" hidden style="text-align:left;margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
-      <div style="font-size:13.5px;font-weight:600;margin-bottom:4px">Opened from your home screen?</div>
-      <div style="font-size:12.5px;color:var(--fg2);line-height:1.5;margin-bottom:10px">Don't tap the link in the email. <b>Press and hold</b> the sign-in link, choose <b>Copy Link</b>, then come back here and paste it below.</div>
+      <div style="font-size:13.5px;font-weight:600;margin-bottom:4px">Got the email? Paste your link here</div>
+      <div style="font-size:12.5px;color:var(--fg2);line-height:1.5;margin-bottom:10px">In the email, <b>press and hold</b> the sign-in link, choose <b>Copy Link</b>, then come back to this screen and paste it below.</div>
       <input type="url" id="pasteLink" placeholder="Paste the sign-in link here" autocomplete="off" autocapitalize="off" spellcheck="false">
       <button class="btn btn-green btn-full" style="margin-top:10px" onclick="signInWithPasted()">Sign in</button>
     </div>
@@ -669,6 +669,6 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
 <!-- TOAST -->
 <div id="toast" style="position:fixed;bottom:calc(72px + env(safe-area-inset-bottom,0px) + 12px);left:50%;transform:translateX(-50%) translateY(10px);background:#222b3d;color:#fff;padding:10px 20px;border-radius:30px;font-size:14px;font-weight:600;z-index:500;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;white-space:nowrap"></div>
 
-<script src="app.js?v=20261024e"></script>
+<script src="app.js?v=20261024f"></script>
 </body>
 </html>
