@@ -576,22 +576,24 @@ async function approveSignup(id){
 async function declineSignup(id){ try{ await db.collection('signups').doc(id).update({status:'declined'}); toast('Declined'); }catch(e){ toast('Could not update: '+e.message); } }
 function filterAdminPlayers(q){ renderAdminPlayers(q.toLowerCase()) }
 function renderAdminPlayers(filter=''){
-  const players=[...state.players].filter(p=>!filter||p.name.toLowerCase().includes(filter)||p.email.includes(filter)).sort((a,b)=>a.name.localeCompare(b.name));
-  $('adminPlayerBody').innerHTML=players.length?players.map(p=>{
-    const ranks=playerLadders(p).map(t=>`${t.toUpperCase()} #${rankIn(p,t)}`).join(' · ')||'—'; const rec=record(p);
-    return `<tr>
-      <td style="font-size:11px;color:var(--fg2);white-space:nowrap">${ranks}</td>
-      <td><div style="display:flex;align-items:center;gap:8px"><div class="avatar" style="width:28px;height:28px;font-size:11px">${esc(p.initials)}</div><div><div style="font-weight:600;font-size:13px;white-space:nowrap">${esc(p.name)}</div><div style="font-size:11px;color:var(--fg2)">NTRP ${esc(p.ntrp)} · ${esc(p.gender)} · ${esc(p.email)}</div></div></div></td>
-      <td style="font-variant-numeric:tabular-nums">${getRating(p,p.gender==='F'?'ws':'ms')}</td>
-      <td style="font-variant-numeric:tabular-nums">${getRating(p,p.gender==='F'?'wd':'md')}</td>
-      <td style="font-variant-numeric:tabular-nums">${getRating(p,'mx')}</td>
-      <td style="color:var(--purple);font-size:12px">${p.utrSingles!=null?Number(p.utrSingles).toFixed(2):'–'}</td>
-      <td style="color:var(--purple);font-size:12px">${p.utrDoubles!=null?Number(p.utrDoubles).toFixed(2):'–'}</td>
-      <td style="white-space:nowrap">${rec.w}W/${rec.l}L</td>
-      <td style="font-size:12px;white-space:nowrap">${esc(p.billingStart||'—')}</td>
-      <td><span class="chip ${p.active!==false?'chip-green':'chip-red'}">${p.active!==false?'Active':'Inactive'}</span></td>
-      <td><button class="btn btn-secondary btn-sm" onclick="openPlayerSheet('${esc(p.id)}')">Edit</button></td></tr>`;
-  }).join(''):`<tr><td colspan="11" style="text-align:center;color:var(--fg2);padding:24px">No players yet — approve a sign-up or add one from the Add tab.</td></tr>`;
+  const players=[...state.players].filter(p=>!filter||p.name.toLowerCase().includes(filter)||(p.email||'').includes(filter)).sort((a,b)=>a.name.localeCompare(b.name));
+  $('adminPlayerList').innerHTML=players.length?players.map(p=>{
+    const rec=record(p);
+    const draws=playerLadders(p).map(t=>`<span class="pstat" style="color:${LADDERS[t].color}">${LADDERS[t].short} <b>#${rankIn(p,t)}</b> \u00b7 ${getRating(p,t)}</span>`).join('');
+    const utr=[p.utrSingles!=null?`UTR-S <b>${Number(p.utrSingles).toFixed(2)}</b>`:'',p.utrDoubles!=null?`UTR-D <b>${Number(p.utrDoubles).toFixed(2)}</b>`:''].filter(Boolean).map(x=>`<span class="pstat" style="color:var(--purple)">${x}</span>`).join('');
+    return `<div class="pcard" onclick="openPlayerSheet('${esc(p.id)}')">
+      <div class="pcard-top">
+        <div class="avatar" style="width:34px;height:34px;font-size:13px">${esc(p.initials)}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.name)}</div>
+          <div style="font-size:12px;color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">NTRP ${esc(p.ntrp)} \u00b7 ${p.gender==='F'?"Women's":"Men's"} \u00b7 ${esc(p.email)}</div>
+        </div>
+        <span class="chip ${p.active!==false?'chip-green':'chip-red'}">${p.active!==false?'Active':'Inactive'}</span>
+        <span style="color:var(--fg2);font-size:20px;line-height:1">\u203a</span>
+      </div>
+      <div class="pcard-stats">${draws||'<span class="pstat">No draws</span>'}${utr}<span class="pstat">${rec.w}W\u2013${rec.l}L</span><span class="pstat">Billing <b>${esc(p.billingStart||'\u2014')}</b></span></div>
+    </div>`;
+  }).join(''):`<div class="empty"><div class="empty-title">No players yet</div><div class="empty-sub">Approve a sign-up or add one from the Add tab.</div></div>`;
 }
 function renderAdminMatches(){
   $('adminMatchList').innerHTML=state.matches.length?state.matches.map(m=>`<div class="match-card" style="border-bottom:1px solid var(--border)"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
