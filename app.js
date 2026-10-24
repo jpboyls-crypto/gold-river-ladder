@@ -58,7 +58,10 @@ async function sendLink(){
   try{
     await auth.sendSignInLinkToEmail(email, { url: location.origin + location.pathname, handleCodeInApp: true });
     try{ localStorage.setItem('ladderEmail', email); }catch(e){}
-    $('loginMsg').innerHTML = `<b style="color:var(--green)">Check your inbox.</b> We sent a sign-in link to <b>${esc(email)}</b>. Open it on this phone and you'll be signed in. (Check spam if it's not there in a minute.)`;
+    $('loginMsg').innerHTML = isStandalone()
+      ? `<b style="color:var(--green)">Check your inbox.</b> We sent a sign-in link to <b>${esc(email)}</b>. Because you opened the ladder from your home screen, copy the link instead of tapping it \u2014 see below. (Check spam if it's not there in a minute.)`
+      : `<b style="color:var(--green)">Check your inbox.</b> We sent a sign-in link to <b>${esc(email)}</b>. Open it on this phone and you'll be signed in. (Check spam if it's not there in a minute.)`;
+    showPasteBox();
   }catch(e){
     $('loginMsg').textContent = 'Could not send the link: ' + (e.message||e.code);
     $('loginBtn').disabled = false;
@@ -81,6 +84,28 @@ async function completeLinkSignIn(){
     return false;
   }
 }
+// Home-screen web apps on iPhone don't receive links tapped in Mail/Gmail
+// (those open in Safari), so let members paste the link in instead.
+function isStandalone(){ try{ return navigator.standalone===true || matchMedia('(display-mode: standalone)').matches; }catch(e){ return false; } }
+function showPasteBox(){ $('pasteBox').hidden=false; $('pasteToggle').hidden=true; }
+async function signInWithPasted(){
+  const link=($('pasteLink').value||'').trim();
+  let email=norm($('loginEmail').value);
+  if(!email){ try{ email=localStorage.getItem('ladderEmail')||''; }catch(e){} }
+  if(!email){ $('loginMsg').textContent='Enter your email above first, then paste the link.'; return; }
+  if(!link||!auth.isSignInWithEmailLink(link)){ $('loginMsg').innerHTML='<span style="color:var(--red)">That doesn\u2019t look like a sign-in link.</span> Press and hold the link in the email, choose Copy Link, and paste the whole thing.'; return; }
+  $('loginMsg').textContent='Signing in\u2026';
+  try{
+    await auth.signInWithEmailLink(email, link);
+    try{ localStorage.removeItem('ladderEmail'); }catch(e){}
+    $('pasteLink').value='';
+  }catch(e){
+    const why = e.code==='auth/invalid-email' ? 'the email above doesn\u2019t match the one the link was sent to'
+             : (e.code==='auth/invalid-action-code'||e.code==='auth/expired-action-code') ? 'that link has expired or was already used \u2014 request a fresh one'
+             : (e.message||e.code);
+    $('loginMsg').innerHTML='<span style="color:var(--red)">Couldn\u2019t sign in:</span> '+esc(why)+'.';
+  }
+}
 function signOut(){ stopListeners(); auth.signOut(); }
 
 auth.onAuthStateChanged(async user => {
@@ -90,6 +115,7 @@ auth.onAuthStateChanged(async user => {
   startListeners();
 });
 completeLinkSignIn();
+(function(){ try{ const e=localStorage.getItem('ladderEmail'); if(e) $('loginEmail').value=e; }catch(_){} if(isStandalone()) showPasteBox(); })();
 
 // ═══════════════════════════════════════════
 //  FIRESTORE LISTENERS

@@ -253,6 +253,13 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
     </div>
     <button class="btn btn-primary btn-full" id="loginBtn" onclick="sendLink()">Email me a sign-in link</button>
     <div id="loginMsg" style="font-size:13px;color:var(--fg2);margin-top:12px;min-height:18px;line-height:1.5"></div>
+    <div id="pasteBox" hidden style="text-align:left;margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+      <div style="font-size:13.5px;font-weight:600;margin-bottom:4px">Opened from your home screen?</div>
+      <div style="font-size:12.5px;color:var(--fg2);line-height:1.5;margin-bottom:10px">Don't tap the link in the email. <b>Press and hold</b> the sign-in link, choose <b>Copy Link</b>, then come back here and paste it below.</div>
+      <input type="url" id="pasteLink" placeholder="Paste the sign-in link here" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button class="btn btn-green btn-full" style="margin-top:10px" onclick="signInWithPasted()">Sign in</button>
+    </div>
+    <button class="btn btn-secondary btn-sm" id="pasteToggle" style="margin-top:14px" onclick="showPasteBox()">I already have a sign-in link</button>
   </div>
 </div>
 
