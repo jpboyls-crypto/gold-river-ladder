@@ -857,39 +857,94 @@ async function adminSavePlayer(id){
 }
 // ── welcome message (sent from the admin's own phone; no email service needed) ──
 const APP_URL='https://jpboyls-crypto.github.io/gold-river-ladder/';
+// Setup steps shared by the text and the email.
+function setupSteps(p){
+  return `1) Open this link on your phone — in Safari on iPhone, Chrome on Android:\n${APP_URL}\n\n`+
+    `2) Add it to your home screen first.\n   iPhone: tap the Share button (square with the up arrow) → Add to Home Screen → Add.\n   Android: tap the ⋮ menu → Add to Home screen (or Install app).\n\n`+
+    `3) Open the new GR Ladder icon, enter ${p.email} and tap "Email me a sign-in link."\n\n`+
+    `4) In that email, don't tap the link — press and hold it, choose Copy Link, then go back to the ladder app, paste it in the box and tap Sign in. (Check spam the first time.)\n\n`+
+    `That's it — you'll stay signed in after that.`;
+}
+function seasonLabel(){ return new Date(SEASON_START+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}); }
+// Short version for a text message.
 function welcomeText(p){
   const first=(p.name||'').split(' ')[0]||'there';
   const draws=playerLadders(p).map(t=>LADDERS[t].label).join(', ');
   return `Hi ${first}, you're in! Welcome to the Gold River Tennis Ladder${draws?' ('+draws+')':''}.\n\n`+
-    `Getting set up takes 2 minutes:\n\n`+
-    `1) Open this link on your phone \u2014 in Safari on iPhone, Chrome on Android:\n${APP_URL}\n\n`+
-    `2) Add it to your home screen first.\n   iPhone: tap the Share button (square with the up arrow) \u2192 Add to Home Screen \u2192 Add.\n   Android: tap the \u22ee menu \u2192 Add to Home screen (or Install app).\n\n`+
-    `3) Open the new GR Ladder icon, enter ${p.email} and tap "Email me a sign-in link."\n\n`+
-    `4) In that email, don't tap the link \u2014 press and hold it, choose Copy Link, then go back to the ladder app, paste it in the box and tap Sign in. (Check spam the first time.)\n\n`+
-    `That's it \u2014 you'll stay signed in after that.\n\n`+
-    `Play is free until the official season starts Jan 1, 2027. Challenge someone or post on the Practice tab to find a hit.\n\n\u2014 Jordan`;
+    `Getting set up takes 2 minutes:\n\n`+setupSteps(p)+`\n\n`+
+    `Once you're in, tap the ? at the top of the app for the full rules and FAQ. Play is free until the season starts ${seasonLabel()}.\n\n— Jordan`;
+}
+// Full version for email: setup + a tour of everything the app does.
+function welcomeEmail(p){
+  const first=(p.name||'').split(' ')[0]||'there';
+  const draws=playerLadders(p).map(t=>LADDERS[t].label);
+  const pts=getRating(p,playerLadders(p)[0]||'ms');
+  const H=t=>`\n\n━━ ${t.toUpperCase()} ━━\n`;
+  const tourneys=state.events.filter(e=>e.type==='tournament'&&(e.date||'')>=today()).sort((a,b)=>a.date.localeCompare(b.date));
+  return `Hi ${first},\n\n`+
+  `You're officially on the Gold River Tennis Ladder — welcome! `+
+  `${draws.length?`You're entered in ${draws.length===1?'the '+draws[0]+' draw':draws.slice(0,-1).join(', ')+' and '+draws.slice(-1)+' draws'}. `:''}`+
+  `Everything runs through the ladder app on your phone: challenges, scores, rankings, finding hitting partners, and events. Here's how to get set up and what you can do with it.`+
+  H('Get set up (2 minutes)')+setupSteps(p)+
+  H('How the ladder works')+
+  `• Everyone has points in each draw they play, and rankings are simply who has the most. You start at ${pts} points, based on your level.\n`+
+  `• Win a match: +${WIN} points. Lose: ${LOSS} points. In doubles, both partners get the same.\n`+
+  `• There are five draws: Men's and Women's Singles, Men's and Women's Doubles, and Mixed Doubles. Doubles is ranked individually, so you can play with different partners.`+
+  H("What's in the app")+
+  `HOME — Your rank in each draw, your record, open challenges with how many days are left to play, any scores waiting for you to confirm, and the next ladder event.\n\n`+
+  `LADDER — The live standings for all five draws. Tap anyone's name to see their record and contact info (phone, email, usual availability) so you can set up a match. Turn on "Show UTR" to see UTR ratings. Doubles ladders also show the Top Pairings.\n\n`+
+  `PLAY — Challenge a player and submit match scores. There's also a Book a court button that opens Club Automation (courts open 48 hours in advance).\n\n`+
+  `PRACTICE — Just want to hit? Post the days and times you're free and the kind of session you want (rally, drills, practice set). Members near your level see it and can tap "I'm in." No points involved.\n\n`+
+  `EVENTS — Quarterly ladder tournaments, socials and other ladder events. Tap Enter or I'm going to sign up, and add events to your Apple or Google calendar.\n\n`+
+  `PROFILE — Add your phone number and when you usually like to play, so other members can reach you. Your full match history is here too.\n\n`+
+  `? BUTTON (top right) — The complete rules and FAQ, any time.`+
+  H('Challenges')+
+  `• You can challenge anyone up to 4 spots above you in the same draw. New members can challenge anyone in their draw for their first ${OPEN_DAYS/7} weeks — and right now, during the free pre-season, everyone can.\n`+
+  `• Once a challenge is sent you have ${CHALLENGE_DAYS} days to play it. Text each other to pick a time, then book a court.\n`+
+  `• Matches are best of 3 sets, with a 10-point tiebreak in place of a third set.`+
+  H('Scores')+
+  `• Either player enters the score on the Play tab (for doubles, pick both partners).\n`+
+  `• The other side gets a Confirm / Dispute prompt on their Home screen. Once confirmed the rankings update; if they don't respond, it counts automatically after ${CONFIRM_HOURS} hours.\n`+
+  `• If a score is wrong, tap Dispute and I'll sort it out.`+
+  H('Staying active')+
+  `Starting ${seasonLabel()}, if you go ${DECAY_GRACE} days without a confirmed match you'll lose ${DECAY_POINTS} points a week until you play again. The app warns you 10 days ahead. If you're injured or away, just let me know and I'll pause you so you don't lose anything.`+
+  H('Tournaments & events')+
+  (tourneys.length?`Quarterly ladder tournaments:\n${tourneys.map(e=>`• ${e.title} — ${fmtWhen(e)}`).join('\n')}\n\n`:`There's a ladder tournament at the end of every quarter. `)+
+  `Socials and other events will be posted on the Events tab as they're scheduled.`+
+  H('Cost')+
+  `The ladder is free until the official season starts ${seasonLabel()}. After that it's $10 a month, billed as a house charge on your member account. You can cancel any time by letting me know.`+
+  `\n\nAny questions, just reply to this email or find me at the club. See you on the courts!\n\n`+
+  `Jordan Boyls\nDirector of Tennis, Gold River Sports Club\nJordanB@sparetimesportsclubs.com`;
 }
 function smsHref(phone,body){ const n=(phone||'').replace(/\D/g,''); const ios=/iPad|iPhone|iPod/.test(navigator.userAgent); return `sms:${n}${ios?'&':'?'}body=${encodeURIComponent(body)}`; }
 function openWelcome(id){
   const p=getPlayer(id); if(!p) return;
-  const body=welcomeText(p);
+  const sms=welcomeText(p), mail=welcomeEmail(p);
+  const subj=encodeURIComponent('Welcome to the Gold River Tennis Ladder');
+  const pre='white-space:pre-wrap;word-break:break-word;font:13px/1.5 Inter,system-ui,sans-serif;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin:8px 0 10px;max-height:260px;overflow:auto';
   $('sheetName').textContent='Send welcome';
   $('sheetBody').innerHTML=`
-    <div style="font-size:13.5px;color:var(--fg2);line-height:1.5;margin-bottom:12px"><b style="color:var(--fg)">${esc(p.name)}</b> is on the ladder. The app doesn\u2019t send emails on its own, so send them this welcome from your phone \u2014 it opens your Messages or Mail app with everything filled in.</div>
-    <pre style="white-space:pre-wrap;word-break:break-word;font:13px/1.5 Inter,system-ui,sans-serif;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px" id="welcomeBody">${esc(body)}</pre>
+    <div style="font-size:13.5px;color:var(--fg2);line-height:1.5;margin-bottom:12px"><b style="color:var(--fg)">${esc(p.name)}</b> is on the ladder. Send them a welcome from your phone — it opens Gmail or Messages with everything filled in. <b style="color:var(--fg)">The email is the full guide</b>; the text is the short version.</div>
+    <div class="section-head" style="padding-top:4px">Email — setup + full app guide</div>
+    <pre style="${pre}" id="welcomeMail">${esc(mail)}</pre>
     <div style="display:grid;gap:8px">
-      ${p.phone?`<a class="btn btn-green btn-full" href="${esc(smsHref(p.phone,body))}">Text it to ${esc(p.phone)}</a>`:''}
-      <a class="btn ${p.phone?'btn-secondary':'btn-green'} btn-full" href="googlegmail:///co?to=${encodeURIComponent(p.email)}&subject=${encodeURIComponent('You\u2019re on the Gold River Tennis Ladder')}&body=${encodeURIComponent(body)}">Email it from the Gmail app</a>
-      <a class="btn btn-secondary btn-full" href="mailto:${esc(p.email)}?subject=${encodeURIComponent('You\u2019re on the Gold River Tennis Ladder')}&body=${encodeURIComponent(body)}">Email it from Mail</a>
-      <button class="btn btn-secondary btn-full" onclick="copyWelcome(this)">Copy message</button>
-      <button class="btn btn-secondary btn-full" onclick="closeSheet('playerSheet')">Done</button>
+      <a class="btn btn-green btn-full" href="googlegmail:///co?to=${encodeURIComponent(p.email)}&subject=${subj}&body=${encodeURIComponent(mail)}">Email it from the Gmail app</a>
+      <a class="btn btn-secondary btn-full" href="mailto:${esc(p.email)}?subject=${subj}&body=${encodeURIComponent(mail)}">Email it from Mail</a>
+      <button class="btn btn-secondary btn-full" onclick="copyWelcome(this,'welcomeMail')">Copy email text</button>
+    </div>
+    <div class="section-head">Text — short version</div>
+    <pre style="${pre}" id="welcomeSms">${esc(sms)}</pre>
+    <div style="display:grid;gap:8px">
+      ${p.phone?`<a class="btn btn-secondary btn-full" href="${esc(smsHref(p.phone,sms))}">Text it to ${esc(p.phone)}</a>`:''}
+      <button class="btn btn-secondary btn-full" onclick="copyWelcome(this,'welcomeSms')">Copy text message</button>
+      <button class="btn btn-secondary btn-full" style="margin-top:6px" onclick="closeSheet('playerSheet')">Done</button>
     </div>`;
   $('playerSheet').classList.add('open');
 }
-async function copyWelcome(btn){
-  const t=$('welcomeBody').textContent;
+async function copyWelcome(btn,which){
+  const el=$(which||'welcomeMail'); const t=el.textContent;
   try{ await navigator.clipboard.writeText(t); btn.textContent='Copied \u2713'; }
-  catch(e){ const r=document.createRange(); r.selectNodeContents($('welcomeBody')); const s=getSelection(); s.removeAllRanges(); s.addRange(r); btn.textContent='Selected \u2014 tap Copy'; }
+  catch(e){ const r=document.createRange(); r.selectNodeContents(el); const s=getSelection(); s.removeAllRanges(); s.addRange(r); btn.textContent='Selected \u2014 tap Copy'; }
 }
 let pendingPlayerDelete=null;
 async function adminDeletePlayer(id){
