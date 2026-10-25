@@ -161,9 +161,10 @@ function afterData(){
     booted=true;
     showAuth(null);
     $('adminBadge').hidden = !state.isAdmin;
+    $('helpBtn').hidden = false;
     $('navAdmin').hidden = !state.isAdmin;
     let h = (location.hash||'').replace('#','');
-    const map={home:'Home',ladder:'Ladder',challenge:'Challenge',practice:'Practice',events:'Events',profile:'Profile',admin:'Admin',install:'Install'};
+    const map={home:'Home',ladder:'Ladder',challenge:'Challenge',practice:'Practice',events:'Events',rules:'Rules',profile:'Profile',admin:'Admin',install:'Install'};
     if(!map[h]) h = (state.isAdmin && !me()) ? 'admin' : 'home';
     goPage(map[h], $('nav'+map[h]));
   } else {
@@ -177,6 +178,7 @@ function rerender(){
   if(currentPage==='Challenge') initChallengePage(true);
   if(currentPage==='Practice') renderPractice();
   if(currentPage==='Events') renderEvents();
+  if(currentPage==='Rules') renderRules();
   if(currentPage==='Profile') renderProfile();
   if(currentPage==='Admin') renderAdmin();
 }
@@ -229,6 +231,7 @@ function activityFor(m,id){ return counts(m)&&playedIn(m,id)&&!(m.forfeit&&!wonB
 function lastActivityMs(p){
   let last=Math.max(joinMs(p),dayMs(SEASON_START));
   for(const m of state.matches){ if(!activityFor(m,p.id)) continue; last=Math.max(last,dayMs(m.date)); }
+  for(const h of (p.holds||[])) last=Math.max(last,dayMs(h.to));
   return last;
 }
 // Points lost to inactivity. Every idle stretch since the season started (between join, each counted
@@ -240,9 +243,12 @@ function decayPenalty(p){
   const pts=[start];
   for(const m of state.matches){ if(!activityFor(m,p.id)) continue; const d=dayMs(m.date); if(d>start) pts.push(d); }
   pts.sort((a,b)=>a-b); pts.push(Date.now());
+  const holds=(p.holds||[]).map(h=>[dayNum(dayMs(h.from)),dayNum(dayMs(h.to))]);
   let pen=0;
   for(let i=1;i<pts.length;i++){
-    const gap=dayNum(pts[i])-dayNum(pts[i-1]);
+    const a=dayNum(pts[i-1]), b=dayNum(pts[i]);
+    let held=0; for(const [hf,ht] of holds){ held+=Math.max(0,Math.min(b,ht)-Math.max(a,hf)); }
+    const gap=b-a-held;
     if(gap>DECAY_GRACE) pen+=Math.min(DECAY_CAP,(Math.floor((gap-DECAY_GRACE-1)/7)+1)*DECAY_POINTS);
   }
   return pen;
@@ -868,8 +874,13 @@ async function adminDeletePlayer(id){
   pendingPlayerDelete=null;
   try{ await db.collection('players').doc(id).delete(); toast('Player deleted'); closeSheet('playerSheet'); }catch(e){ toast('Could not delete: '+e.message); }
 }
+// Marking inactive starts a "hold"; reactivating closes it. Days on hold never count toward inactivity decay.
 async function adminToggleActive(id,makeActive){
-  try{ await db.collection('players').doc(id).update({active:makeActive}); toast(makeActive?'Reactivated':'Marked inactive'); closeSheet('playerSheet'); }catch(e){ toast('Could not update: '+e.message); }
+  const p=getPlayer(id); if(!p) return;
+  const upd = makeActive
+    ? {active:true, inactiveSince:null, holds:FieldValue.arrayUnion({from:p.inactiveSince||today(), to:today()})}
+    : {active:false, inactiveSince:today()};
+  try{ await db.collection('players').doc(id).update(upd); toast(makeActive?'Reactivated \u2014 no points lost for the time away':'Marked inactive \u2014 off the ladder, no decay while away'); closeSheet('playerSheet'); }catch(e){ toast('Could not update: '+e.message); }
 }
 
 
@@ -1027,6 +1038,65 @@ async function seedQuarterlies(){
     }
     toast('2027 quarterly tournaments added 🏆');
   }catch(err){ toast('Could not add: '+err.message); }
+}
+
+// ═══════════════════════════════════════════
+//  RULES & FAQ  (numbers come from the rule constants, so this page never drifts)
+// ═══════════════════════════════════════════
+function renderRules(){
+  const el=$('rulesBody'); if(!el) return;
+  const sig=state.events.filter(e=>e.type==='tournament').map(e=>e.id+e.date+e.title).join('|');
+  if(el.dataset.sig===sig&&el.innerHTML) return;
+  const seasonDay=new Date(SEASON_START+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+  const q=(title,body,open)=>`<details${open?' open':''}><summary>${title}</summary><div class="rules-ans">${body}</div></details>`;
+  const sec=(title,items)=>`<div class="rules-sec"><h2>${title}</h2><div class="rules-card">${items.join('')}</div></div>`;
+  const tourneys=state.events.filter(e=>e.type==='tournament'&&(e.date||'')>=today()).sort((a,b)=>a.date.localeCompare(b.date));
+  el.innerHTML=`
+  <div class="rules-key">
+    <div><b>+${WIN} / ${LOSS}</b><span>points for a win / loss</span></div>
+    <div><b>${CHALLENGE_DAYS} days</b><span>to play a challenge</span></div>
+    <div><b>${CONFIRM_HOURS} hrs</b><span>to confirm a score</span></div>
+    <div><b>${DECAY_GRACE} days</b><span>before inactivity slide</span></div>
+  </div>
+  ${sec('The basics',[
+    q('Who can join?',`<p>Gold River and club-wide Spare Time members who are 18 or older. Sign up with the form at the front desk or by scanning the QR code on the flyer; Jordan adds you to the ladder and texts or emails you a welcome with the app link.</p>`,true),
+    q('What are the five draws?',`<p>Men’s Singles, Women’s Singles, Men’s Doubles, Women’s Doubles, and Mixed Doubles. You can be in as many as you like. Singles and doubles are split into men’s and women’s draws based on the placement you chose when signing up; Mixed is open to everyone.</p>`),
+    q('How are rankings decided?',`<p>Everyone has points in each draw they play. Rankings are simply who has the most points.</p><ul><li>Win a match: <b>+${WIN} points</b></li><li>Lose a match: <b>${LOSS} points</b></li></ul><p>Your starting points come from your level when you join (USTA 2.5 = ${NTRP_BASE['2.5']}, 3.0 = ${NTRP_BASE['3.0']}, 3.5 = ${NTRP_BASE['3.5']}, 4.0 = ${NTRP_BASE['4.0']}, 4.5 = ${NTRP_BASE['4.5']}, 5.0+ = ${NTRP_BASE['5.0']}). Jordan may adjust a starting point if someone is clearly placed too high or low.</p>`),
+    q('How does doubles ranking work?',`<p>Doubles is ranked individually, so you can play with different partners. When you win, you and your partner each get +${WIN}; the losing pair each get ${LOSS}. The <b>Top Pairings</b> list on each doubles ladder shows which partnerships have the best record together.</p>`),
+  ])}
+  ${sec('Challenges & matches',[
+    q('Who can I challenge?',`<p>Anyone up to <b>4 spots above you</b> in the same draw. The Play tab only lists the people you’re allowed to challenge.</p><p><b>New members</b> can challenge <b>anyone in their draw</b> for their first ${OPEN_DAYS/7} weeks, to find their level quickly. Everyone has this open window during the free pre-season and the first ${OPEN_DAYS/7} weeks of the season.</p>`),
+    q('How long do we have to play?',`<p><b>${CHALLENGE_DAYS} days</b> from when the challenge is sent. Each challenge on your Home screen shows how much time is left. If it isn’t played in time, Jordan can award the challenger a forfeit win or void the challenge.</p><p>If weather, injury or travel gets in the way, message Jordan before the ${CHALLENGE_DAYS} days are up.</p>`),
+    q('Can I decline a challenge?',`<p>Yes, if you can’t play — let the challenger know why. Jordan may treat repeated declines as forfeits.</p>`),
+    q('How do we book a court?',`<p>The same way you always do, through Club Automation. Tap <b>Book a court</b> on the Play tab, or on an accepted challenge to open the booking page on your proposed date.</p>`),
+    q('What’s the match format?',`<p>Best of 3 sets, with a 10-point tiebreak in place of a third set.</p>`),
+    q('How do I record a score?',`<p>Either player goes to <b>Play → Submit Match Score</b> and enters the result. For doubles, pick both partners. The match then shows as <b>Awaiting confirmation</b>.</p>`),
+    q('Why hasn’t my score counted yet?',`<p>Every score has to be confirmed by the other side. They’ll see it at the top of their Home screen with <b>Confirm</b> and <b>Dispute</b> buttons. If they don’t respond within <b>${CONFIRM_HOURS} hours</b>, it counts automatically.</p>`),
+    q('What if a score is wrong?',`<p>Tap <b>Dispute</b> instead of Confirm. The match won’t count, and Jordan will sort it out with both players. If you entered a score by mistake, message Jordan and he’ll delete it.</p>`),
+  ])}
+  ${sec('Staying active',[
+    q('What happens if I don’t play for a while?',`<p>Starting <b>${seasonDay}</b>, if you go <b>${DECAY_GRACE} days</b> without a confirmed match, you lose <b>${DECAY_POINTS} points a week</b> until you play again (at most ${DECAY_CAP} points per idle stretch). Playing stops the slide, but points already lost don’t come back. It keeps the ladder moving so the top spots go to people who are playing.</p><p>You’ll get a heads-up on your Home screen 10 days before you’d start sliding.</p>`),
+    q('Does losing by forfeit count as playing?',`<p>No. A forfeit win keeps the winner active, but a forfeit loss doesn’t reset the inactivity clock.</p>`),
+    q('I’m injured or away — what should I do?',`<p>Let Jordan know. He can mark you inactive so you drop off the ladder without losing points, and bring you back when you’re ready.</p>`),
+  ])}
+  ${sec('Practice, events & tournaments',[
+    q('What’s the Practice tab?',`<p>A place to find hitting partners, with no points involved. Post the days and times you’re free and the kind of session you want; members within your chosen level range see it under <b>Matches My Level</b> and can tap <b>I’m in</b>.</p>`),
+    q('When are the quarterly tournaments?',tourneys.length?`<p>${tourneys.map(e=>`<b>${esc(e.title)}</b> — ${esc(fmtWhen(e))}`).join('<br>')}</p><p>Details, eligibility and sign-up are on the <b>Events</b> tab.</p>`:`<p>One at the end of each quarter. Dates, eligibility and sign-up will be posted on the <b>Events</b> tab.</p>`),
+    q('How do I sign up for an event?',`<p>Open the <b>Events</b> tab and tap <b>Enter</b> (tournaments) or <b>I’m going</b> (socials). You can also add it to your Apple or Google calendar from there.</p>`),
+  ])}
+  ${sec('Fees',[
+    q('How much does it cost?',`<p>The ladder is <b>free until ${seasonDay}</b>, when the official season starts. After that it’s <b>$10 a month</b>, billed as a house charge on your member account.</p><p>Join after the season starts and your first month is free.</p>`),
+    q('How do I cancel?',`<p>Let Jordan know. Billing stops at the end of that month.</p>`),
+  ])}
+  ${sec('Using the app',[
+    q('How do I sign in?',`<p>Enter your email and tap <b>Email me a sign-in link</b>. On iPhone, if you opened the ladder from your home screen, don’t tap the link in the email — press and hold it, choose <b>Copy Link</b>, then paste it into the box on the sign-in screen. You stay signed in after that.</p>`),
+    q('How do I put the app on my home screen?',`<p>iPhone: open the link in Safari, tap the Share button, then <b>Add to Home Screen</b>. Android: open it in Chrome, tap the ⋮ menu, then <b>Add to Home screen</b> or <b>Install app</b>. Full steps are under <b>Profile → Install on your phone</b>.</p>`),
+    q('Will I get notifications?',`<p>Not yet. Open the app to check for new challenges, scores to confirm and practice requests — they’re all on your Home screen.</p>`),
+    q('How do other members contact me?',`<p>Through the phone number and email on your profile. Update your number and usual availability under <b>Profile → My contact info</b>.</p>`),
+    q('The app looks out of date',`<p>Close it completely and reopen it. Updates usually appear within a few minutes.</p>`),
+    q('Who do I contact with questions?',`<p>Jordan Boyls, Director of Tennis — <span style="user-select:all;color:var(--accent-hi);font-weight:600">JordanB@sparetimesportsclubs.com</span></p>`),
+  ])}`;
+  el.dataset.sig=sig;
 }
 
 // ═══════════════════════════════════════════

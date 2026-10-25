@@ -125,6 +125,24 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
 .day-picker span{font-size:12px;font-weight:600;padding:6px 10px;border-radius:7px;background:var(--surface2);color:var(--fg2);border:1px solid var(--border);cursor:pointer;user-select:none;transition:all .12s}
 .day-picker span.on{background:rgba(45,107,228,.18);color:var(--accent-hi);border-color:var(--accent)}
 .hit-tag{display:inline-block;font-size:11px;font-weight:600;padding:3px 8px;border-radius:6px;background:var(--surface2);color:var(--fg2);margin:2px 4px 2px 0}
+.help-btn{flex:none;width:32px;height:32px;border-radius:50%;border:1.5px solid var(--border);color:var(--fg2);font-weight:700;font-size:16px;display:flex;align-items:center;justify-content:center;background:var(--surface2)}
+.rules-sec{margin-top:22px}
+.rules-sec h2{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;color:var(--fg2);margin:0 0 8px}
+.rules-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.rules-card details{border-bottom:1px solid var(--border)}
+.rules-card details:last-child{border-bottom:none}
+.rules-card summary{list-style:none;cursor:pointer;padding:13px 40px 13px 16px;font-weight:600;font-size:14.5px;line-height:1.4;position:relative}
+.rules-card summary::-webkit-details-marker{display:none}
+.rules-card summary::after{content:'+';position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:20px;font-weight:400;color:var(--fg2)}
+.rules-card details[open] summary::after{content:'\2212'}
+.rules-card details[open] summary{color:var(--accent-hi)}
+.rules-ans{padding:0 16px 14px;font-size:13.5px;line-height:1.6;color:var(--fg)}
+.rules-ans p{margin:0 0 8px}.rules-ans p:last-child{margin:0}
+.rules-ans ul{margin:4px 0 8px 18px;padding:0}.rules-ans li{margin-bottom:4px}
+.rules-key{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:16px}
+.rules-key div{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+.rules-key b{display:block;font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;color:var(--accent-hi);line-height:1.1}
+.rules-key span{font-size:11.5px;color:var(--fg2)}
 .ev{padding:14px 16px;border-bottom:1px solid var(--border)}
 .ev:last-child{border-bottom:none}
 .ev-top{display:flex;gap:12px;align-items:flex-start}
@@ -249,6 +267,7 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
     </div>
   </div>
   <span class="admin-badge" id="adminBadge" hidden>ADMIN</span>
+  <button class="help-btn" id="helpBtn" hidden onclick="goPage('Rules')" aria-label="Rules and FAQ">?</button>
 </div>
 
 <!-- AUTH -->
@@ -455,6 +474,15 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
   </div>
 </div>
 
+<!-- RULES & FAQ -->
+<div class="page" id="pageRules">
+  <div class="pad" style="padding-top:20px">
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:30px;font-weight:800;line-height:1;text-transform:uppercase">Rules &amp; FAQ</div>
+    <div style="font-size:13px;color:var(--fg2);margin-top:6px;line-height:1.5">How the Gold River Tennis Ladder works. Tap any question to open it.</div>
+    <div id="rulesBody"></div>
+  </div>
+</div>
+
 <!-- EVENTS -->
 <div class="page" id="pageEvents">
   <div class="pad">
@@ -494,7 +522,8 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
     <div class="section-head">Match History</div>
     <div class="card" id="historyList"></div>
 
-    <button class="btn btn-secondary btn-full" style="margin-top:16px" onclick="goPage('Install')">📲 Install on your phone &amp; house rules</button>
+    <button class="btn btn-secondary btn-full" style="margin-top:16px" onclick="goPage('Rules')">📖 Ladder rules &amp; FAQ</button>
+    <button class="btn btn-secondary btn-full" style="margin-top:8px" onclick="goPage('Install')">📲 Install on your phone</button>
 
     <div class="section-head">My contact info</div>
     <div class="card" style="padding:16px">
@@ -545,20 +574,11 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
     <div class="section-head">Then, your first three moves</div>
     <div class="card" style="padding:4px 16px">
       <div class="install-step"><div class="install-num" style="background:rgba(58,170,106,.15);color:var(--green)">1</div><div><b>Check your spot.</b> Tap <b>Ladder</b> and find your name in each draw you joined.</div></div>
-      <div class="install-step"><div class="install-num" style="background:rgba(58,170,106,.15);color:var(--green)">2</div><div><b>Challenge someone.</b> You can challenge anyone up to four spots above you. Win and you take their spot.</div></div>
+      <div class="install-step"><div class="install-num" style="background:rgba(58,170,106,.15);color:var(--green)">2</div><div><b>Challenge someone.</b> Challenge a player above you on the ladder. Win and you gain points; beat enough people and you climb.</div></div>
       <div class="install-step" style="border-bottom:0"><div class="install-num" style="background:rgba(58,170,106,.15);color:var(--green)">3</div><div><b>Or just hit.</b> The <b>Practice</b> tab lets you post when you're free — no points, no pressure.</div></div>
     </div>
 
-    <div class="section-head">House rules</div>
-    <div class="card" style="padding:14px 16px;font-size:13.5px;line-height:1.6;color:var(--fg)">
-      <div style="margin-bottom:8px">• Challenge anyone up to <b>4 spots above you</b>. New members can challenge <b>anyone in their draw</b> for their first 3 weeks (everyone gets this for the first 3 weeks of the season).</div>
-      <div style="margin-bottom:8px">• A challenge must be played within <b>7 days</b>. If it isn’t, Jordan can award the challenger a forfeit win.</div>
-      <div style="margin-bottom:8px">• Best of 3 sets, 10-point tiebreak in place of a third. Either player can enter the score.</div>
-      <div style="margin-bottom:8px">• The other side gets <b>48 hours to confirm</b> the score; after that it counts automatically. Disputed scores go to Jordan.</div>
-      <div style="margin-bottom:8px">• Stay active: from Jan 1, 2027, after <b>30 days</b> without a confirmed match you lose <b>10 points a week</b> until you play again.</div>
-      <div style="margin-bottom:8px">• You book your own court through the front desk as usual.</div>
-      <div>• Questions or disputes go to Jordan — <span style="color:var(--accent-hi);font-weight:600;user-select:all">JordanB@sparetimesportsclubs.com</span></div>
-    </div>
+    <button class="btn btn-secondary btn-full" style="margin-top:16px" onclick="goPage('Rules')">📖 Read the ladder rules &amp; FAQ</button>
 
     <button class="btn btn-primary btn-full" style="margin-top:20px" onclick="goPage('Home',document.getElementById('navHome'))">Take me to the ladder</button>
   </div>
@@ -710,6 +730,6 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
 <!-- TOAST -->
 <div id="toast" style="position:fixed;bottom:calc(72px + env(safe-area-inset-bottom,0px) + 12px);left:50%;transform:translateX(-50%) translateY(10px);background:#222b3d;color:#fff;padding:10px 20px;border-radius:30px;font-size:14px;font-weight:600;z-index:500;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;white-space:nowrap"></div>
 
-<script src="app.js?v=20261025a"></script>
+<script src="app.js?v=20261025b"></script>
 </body>
 </html>
