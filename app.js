@@ -134,6 +134,29 @@ auth.onAuthStateChanged(async user => {
   startListeners();
 });
 completeLinkSignIn();
+
+// ── self-update ──
+// GitHub Pages lets phones reuse a cached page for ~10 minutes, and home-screen apps hold on longer.
+// On open (and whenever the app comes back to the foreground) fetch the live index.html, bypassing the
+// cache; if it references a newer app.js version, reload onto a fresh URL so the new version loads.
+function currentVersion(){ const sc=[...document.scripts].find(x=>/app\.js\?v=/.test(x.src)); return sc?sc.src.split('v=')[1]:''; }
+async function checkForUpdate(){
+  try{
+    if(location.protocol==='file:') return;
+    const r=await fetch('index.html?check='+Date.now(),{cache:'no-store'}); if(!r.ok) return;
+    const m=(await r.text()).match(/app\.js\?v=([\w-]+)/); if(!m) return;
+    const live=m[1], mine=currentVersion();
+    if(mine&&live!==mine){
+      if(isSignInLinkPending()) return; // never interrupt an email-link sign-in
+      // loop guard: only try once per version per session
+      try{ if(sessionStorage.getItem('triedUpdate')===live) return; sessionStorage.setItem('triedUpdate',live); }catch(e){ return; }
+      location.replace(location.pathname.replace(/[^/]*$/,'')+'index.html?u='+live+location.hash);
+    }
+  }catch(e){}
+}
+function isSignInLinkPending(){ try{ return auth.isSignInWithEmailLink(location.href); }catch(e){ return false; } }
+checkForUpdate();
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') checkForUpdate(); });
 (function(){ try{ const e=localStorage.getItem('ladderEmail'); if(e) $('loginEmail').value=e; }catch(_){} if(isStandalone()) showPasteBox(); })();
 
 // ═══════════════════════════════════════════
