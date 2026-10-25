@@ -179,19 +179,34 @@ const db=firebase.firestore();
     catch(e){const r=document.createRange();r.selectNodeContents($('sum'));const s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent='Selected — press copy';}
     setTimeout(()=>b.textContent='Copy sign-up text',2500);
   });
+  // Sign-ups go two places at once: the app's Admin → Sign-ups list (Firestore), and an email to
+  // Jordan via Formspree. Either one succeeding counts as received.
+  const FORMSPREE='https://formspree.io/f/xbgggjyn';
+  function notifyByEmail(d){
+    return fetch(FORMSPREE,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},
+      body:JSON.stringify({
+        _subject:'New ladder sign-up: '+d.name,
+        _replyto:d.email,
+        name:d.name, email:d.email, phone:d.phone,
+        draws:(d.draws||[]).join(', '), placement:d.placement,
+        level:'USTA '+d.ntrp+(d.utr?' | UTR '+d.utr:''),
+        availability:d.avail||'—',
+        note:'Approve them in the ladder app: Admin → Sign-ups'
+      })}).then(r=>{ if(!r.ok) throw new Error('formspree '+r.status); });
+  }
   async function saveSignup(data){
-    const btn=document.querySelector('#f button[type=submit]');
-    try{
-      await db.collection('signups').add(data);
+    const [toApp,toEmail]=await Promise.allSettled([db.collection('signups').add(data), notifyByEmail(data)]);
+    if(toApp.status==='rejected') console.error('app list', toApp.reason);
+    if(toEmail.status==='rejected') console.error('email', toEmail.reason);
+    if(toApp.status==='fulfilled'||toEmail.status==='fulfilled'){
       try{ localStorage.removeItem('ladder-signup'); }catch(e){}
-    }catch(e){
-      console.error(e);
-      $('doneTitle').textContent='Almost done — one more tap';
-      $('doneTitle').style.color='var(--gold)';
-      $('doneText').innerHTML='We couldn\u2019t reach the sign-up list just now, so please send this to Jordan directly: tap the button below to email it, or copy it and text it to him.';
-      $('mail').hidden=false; $('mail').classList.remove('sec'); $('mail').classList.add('green');
-      $('edit').hidden=false;
+      return;
     }
+    $('doneTitle').textContent='Almost done — one more tap';
+    $('doneTitle').style.color='var(--gold)';
+    $('doneText').innerHTML='We couldn’t reach the sign-up list just now, so please send this to Jordan directly: tap the button below to email it, or copy it and text it to him.';
+    $('mail').hidden=false; $('mail').classList.remove('sec'); $('mail').classList.add('green');
+    $('edit').hidden=false;
   }
 })();
 </script>
