@@ -299,12 +299,13 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
       <div><div class="hero-stat-val" id="heroWins">12</div><div class="hero-stat-lbl">Wins</div></div>
       <div><div class="hero-stat-val" id="heroLosses">4</div><div class="hero-stat-lbl">Losses</div></div>
       <div><div class="hero-stat-val" id="heroRating">1480</div><div class="hero-stat-lbl">S.Rating</div></div>
-      <div><div class="hero-stat-val" id="heroPending">2</div><div class="hero-stat-lbl">Pending</div></div>
+      <div><div class="hero-stat-val" id="heroPending">2</div><div class="hero-stat-lbl">Open</div></div>
     </div>
   </div>
   <div class="pad">
+    <div id="homeAlerts"></div>
     <div id="homeEvent"></div>
-    <div class="section-head">Pending Challenges</div>
+    <div class="section-head">Open Challenges</div>
     <div class="card" id="pendingList"></div>
     <div class="section-head" style="margin-top:8px">Recent Matches</div>
     <div class="card" id="recentList"></div>
@@ -342,6 +343,7 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
         <label class="form-label">Ladder</label>
         <select id="chlLadder" onchange="populateOpponentsFor(this.value,'chlOpponent')"></select>
       </div>
+      <div id="chlNote"></div>
       <div class="form-group">
         <label class="form-label">Opponent</label>
         <select id="chlOpponent"></select>
@@ -544,8 +546,11 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
 
     <div class="section-head">House rules</div>
     <div class="card" style="padding:14px 16px;font-size:13.5px;line-height:1.6;color:var(--fg)">
-      <div style="margin-bottom:8px">• Challenged players have <b>7 days</b> to play or they forfeit the spot.</div>
-      <div style="margin-bottom:8px">• Best of 3 sets, 10-point tiebreak in place of a third. Winner submits the score.</div>
+      <div style="margin-bottom:8px">• Challenge anyone up to <b>4 spots above you</b>. New members can challenge <b>anyone in their draw</b> for their first 3 weeks (everyone gets this for the first 3 weeks of the season).</div>
+      <div style="margin-bottom:8px">• A challenge must be played within <b>7 days</b>. If it isn’t, Jordan can award the challenger a forfeit win.</div>
+      <div style="margin-bottom:8px">• Best of 3 sets, 10-point tiebreak in place of a third. Either player can enter the score.</div>
+      <div style="margin-bottom:8px">• The other side gets <b>48 hours to confirm</b> the score; after that it counts automatically. Disputed scores go to Jordan.</div>
+      <div style="margin-bottom:8px">• Stay active: from Jan 1, 2027, after <b>30 days</b> without a confirmed match you lose <b>10 points a week</b> until you play again.</div>
       <div style="margin-bottom:8px">• You book your own court through the front desk as usual.</div>
       <div>• Questions or disputes go to Jordan — <span style="color:var(--accent-hi);font-weight:600;user-select:all">JordanB@sparetimesportsclubs.com</span></div>
     </div>
@@ -560,7 +565,7 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
     <div class="tabs" id="adminTabs">
       <div class="tab active" onclick="switchAdmin('signups',this)">Sign-ups<span class="badge-count" id="signupCount" hidden>0</span></div>
       <div class="tab" onclick="switchAdmin('players',this)">Players</div>
-      <div class="tab" onclick="switchAdmin('matches',this)">Matches</div>
+      <div class="tab" onclick="switchAdmin('matches',this)">Matches<span class="badge-count" id="matchAlertCount" hidden>0</span></div>
       <div class="tab" onclick="switchAdmin('add',this)">Add</div>
     </div>
 
@@ -579,7 +584,7 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
     </div>
 
     <div id="adminMatches" hidden>
-      <div class="card" id="adminMatchList"></div>
+      <div id="adminMatchList"></div>
     </div>
 
     <div id="adminAdd" hidden>
@@ -700,6 +705,6 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
 <!-- TOAST -->
 <div id="toast" style="position:fixed;bottom:calc(72px + env(safe-area-inset-bottom,0px) + 12px);left:50%;transform:translateX(-50%) translateY(10px);background:#222b3d;color:#fff;padding:10px 20px;border-radius:30px;font-size:14px;font-weight:600;z-index:500;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;white-space:nowrap"></div>
 
-<script src="app.js?v=20261024g"></script>
+<script src="app.js?v=20261024h"></script>
 </body>
 </html>

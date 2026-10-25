@@ -20,6 +20,15 @@ const FieldValue = firebase.firestore.FieldValue;
 
 // Rating deltas — symmetric: every winner gets +WIN, every loser gets LOSS
 const WIN = 18, LOSS = -12;
+// ── ladder rules ──
+const SEASON_START   = '2027-01-01'; // decay and the launch "open challenge" window are measured from here
+const CONFIRM_HOURS  = 48;  // unconfirmed scores count automatically after this
+const CHALLENGE_DAYS = 7;   // a challenge must be played within this many days
+const DECAY_GRACE    = 30;  // days without a confirmed match before sliding starts
+const DECAY_POINTS   = 10;  // points lost per week once sliding
+const DECAY_CAP      = 100; // max points lost in any single idle stretch
+const OPEN_DAYS      = 21;  // new members can challenge anyone in their draw for this long
+const DAY = 86400000;
 const NTRP_BASE = {'2.5':1000,'3.0':1100,'3.5':1200,'4.0':1400,'4.5':1600,'5.0':1800,'5.0+':1800};
 
 // ── live state (filled by Firestore listeners) ──
@@ -153,6 +162,7 @@ function afterData(){
   }
 }
 function rerender(){
+  if(state.isAdmin) renderMatchBadge();
   if(currentPage==='Home') renderHome();
   if(currentPage==='Ladder') renderLadder();
   if(currentPage==='Challenge') initChallengePage(true);
@@ -183,12 +193,64 @@ function ladderColor(t){ return LADDERS[t].color }
 function playedIn(x,id){ return x.p1===id||x.p2===id||x.p1Partner===id||x.p2Partner===id }
 function wonBy(x,id){ const side1=id===x.p1||id===x.p1Partner; return side1?x.winner===x.p1:x.winner===x.p2; }
 function getUTR(p,t){ return p[LADDERS[t].utr] }
+// ── dates ──
+function tsMs(ts){ if(!ts) return Date.now(); if(typeof ts.seconds==='number') return ts.seconds*1000; const d=new Date(ts); return isNaN(d)?Date.now():d.getTime(); }
+function dayMs(d){ const [y,m,dd]=(d||'').split('-').map(Number); return new Date(y,(m||1)-1,dd||1).getTime(); }
+function fmtShort(ms){ return new Date(ms).toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
+function seasonStarted(){ return Date.now()>=dayMs(SEASON_START); }
+
+// ── score confirmation ──
+// Old matches have no status: they count. Pending ones count once confirmed, or automatically after CONFIRM_HOURS.
+function matchState(m){
+  if(!m.status||m.status==='confirmed') return 'confirmed';
+  if(m.status==='disputed') return 'disputed';
+  return (Date.now()-tsMs(m.createdAt) >= CONFIRM_HOURS*3600000) ? 'confirmed' : 'pending';
+}
+function counts(m){ return matchState(m)==='confirmed'; }
+function countedMatches(){ return state.matches.filter(counts); }
+function confirmDeadline(m){ return tsMs(m.createdAt)+CONFIRM_HOURS*3600000; }
+function onOpposingSide(m,id){ const subSide1=m.submittedBy===m.p1||m.submittedBy===m.p1Partner; return subSide1?(m.p2===id||m.p2Partner===id):(m.p1===id||m.p1Partner===id); }
+
+// ── activity / decay ──
+function joinMs(p){ return p.createdAt?tsMs(p.createdAt):dayMs('2026-10-24'); }
+// whole calendar days, immune to daylight-saving shifts
+function dayNum(ms){ const d=new Date(ms); return Math.round(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())/DAY); }
+// a match keeps you active — except losing by forfeit (dodging a challenge shouldn't reset your clock)
+function activityFor(m,id){ return counts(m)&&playedIn(m,id)&&!(m.forfeit&&!wonBy(m,id)); }
+function lastActivityMs(p){
+  let last=Math.max(joinMs(p),dayMs(SEASON_START));
+  for(const m of state.matches){ if(!activityFor(m,p.id)) continue; last=Math.max(last,dayMs(m.date)); }
+  return last;
+}
+// Points lost to inactivity. Every idle stretch since the season started (between join, each counted
+// match, and today) costs DECAY_POINTS per week after DECAY_GRACE days, capped at DECAY_CAP per stretch.
+// Playing again stops the slide but does not refund points already lost.
+function decayPenalty(p){
+  if(!seasonStarted()||p.active===false) return 0;
+  const start=Math.max(joinMs(p),dayMs(SEASON_START));
+  const pts=[start];
+  for(const m of state.matches){ if(!activityFor(m,p.id)) continue; const d=dayMs(m.date); if(d>start) pts.push(d); }
+  pts.sort((a,b)=>a-b); pts.push(Date.now());
+  let pen=0;
+  for(let i=1;i<pts.length;i++){
+    const gap=dayNum(pts[i])-dayNum(pts[i-1]);
+    if(gap>DECAY_GRACE) pen+=Math.min(DECAY_CAP,(Math.floor((gap-DECAY_GRACE-1)/7)+1)*DECAY_POINTS);
+  }
+  return pen;
+}
+function decayStartsMs(p){ return lastActivityMs(p)+(DECAY_GRACE+1)*DAY; }
+
+// ── new-member open-challenge window ──
+function openUntilMs(p){ return Math.max(joinMs(p),dayMs(SEASON_START))+OPEN_DAYS*DAY; }
+function inOpenWindow(p){ return Date.now()<openUntilMs(p); }
+function isNewMember(p){ return Date.now()-joinMs(p)<OPEN_DAYS*DAY; }
+
 function getRating(p,t){
   const L=LADDERS[t]; let r=p[L.base]||NTRP_BASE[p.ntrp]||1200;
-  for(const m of state.matches){ if(m.ladder!==t||!playedIn(m,p.id)) continue; r += wonBy(m,p.id)?WIN:LOSS; }
-  return r;
+  for(const m of state.matches){ if(m.ladder!==t||!playedIn(m,p.id)||!counts(m)) continue; r += wonBy(m,p.id)?WIN:LOSS; }
+  return r-decayPenalty(p);
 }
-function record(p){ let w=0,l=0; for(const m of state.matches){ if(!playedIn(m,p.id)) continue; wonBy(m,p.id)?w++:l++; } return {w,l}; }
+function record(p){ let w=0,l=0; for(const m of state.matches){ if(!playedIn(m,p.id)||!counts(m)) continue; wonBy(m,p.id)?w++:l++; } return {w,l}; }
 function playerLadders(p){ return LADDER_ORDER.filter(t=>{const L=LADDERS[t];return p[L.flag]&&(!L.gender||p.gender===L.gender)}); }
 function getRanked(t){
   const L=LADDERS[t];
@@ -205,7 +267,7 @@ function matchLine(match,viewerId){
 }
 function pairingStats(ladder){
   const map={};
-  state.matches.filter(x=>x.ladder===ladder&&x.p1Partner&&x.p2Partner).forEach(x=>{
+  state.matches.filter(x=>x.ladder===ladder&&x.p1Partner&&x.p2Partner&&counts(x)).forEach(x=>{
     [[x.p1,x.p1Partner,x.winner===x.p1],[x.p2,x.p2Partner,x.winner===x.p2]].forEach(([a,b,won])=>{
       const key=[a,b].sort().join('|');
       if(!map[key]) map[key]={ids:[a,b],wins:0,losses:0};
@@ -251,11 +313,12 @@ function renderHome(){
   $('heroRank').textContent=parts.join(' · ')||'Not enrolled in any ladder';
   $('heroWins').textContent=rec.w; $('heroLosses').textContent=rec.l;
   const firstL=playerLadders(m)[0]; $('heroRating').textContent=firstL?getRating(m,firstL):'—';
-  const pending=state.challenges.filter(c=>c.status==='pending'&&(c.to===m.id||c.from===m.id)).sort((a,b)=>(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0));
+  renderHomeAlerts(m);
+  const pending=state.challenges.filter(c=>isOpenChallenge(c)&&(c.to===m.id||c.from===m.id)).sort((a,b)=>tsMs(a.createdAt)-tsMs(b.createdAt));
   $('heroPending').textContent=pending.length;
   const pList=$('pendingList');
   if(!pending.length){
-    pList.innerHTML=`<div class="empty"><div class="empty-icon">🎾</div><div class="empty-title">No pending challenges</div><div class="empty-sub">Issue a challenge from the Play tab.</div></div>`;
+    pList.innerHTML=`<div class="empty"><div class="empty-icon">🎾</div><div class="empty-title">No open challenges</div><div class="empty-sub">Issue a challenge from the Play tab.</div></div>`;
   } else {
     pList.innerHTML=pending.map(c=>{
       const otherId=c.from===m.id?c.to:c.from; const other=getPlayer(otherId); const incoming=c.to===m.id;
@@ -264,33 +327,65 @@ function renderHome(){
           <div class="avatar" onclick="openPlayerSheet('${esc(otherId)}')">${esc(other?other.initials:'?')}</div>
           <div style="flex:1;min-width:0">
             <div style="font-weight:600">${incoming?'Challenge from':'Challenged'} <b>${esc(displayName(otherId))}</b></div>
-            <div style="font-size:12px;color:var(--fg2)">${esc(ladderLabel(c.ladder))} · ${esc(c.date)}</div>
+            <div style="font-size:12px;color:var(--fg2)">${esc(ladderLabel(c.ladder))}${c.date?' · proposed '+esc(c.date):''} · play by ${fmtShort(challengeDeadline(c))}</div>
             ${c.message?`<div style="font-size:13px;color:var(--fg2);margin-top:3px;font-style:italic">"${esc(c.message)}"</div>`:''}
           </div>
-          <span class="chip chip-gold">Pending</span>
         </div>
-        ${incoming?`<div class="match-actions">
+        <div style="margin-top:8px">${c.status==='accepted'&&!isExpired(c)?'<span class="chip chip-green">Accepted</span> ':''}${clockLabel(c)}</div>
+        ${isExpired(c)?'':incoming&&c.status==='pending'?`<div class="match-actions">
           <button class="btn btn-green btn-sm" onclick="respondChallenge('${c.id}','accepted')">Accept</button>
           <button class="btn btn-secondary btn-sm" onclick="respondChallenge('${c.id}','declined')">Decline</button>
           ${other&&other.phone?`<a class="btn btn-secondary btn-sm" href="sms:${esc(other.phone.replace(/\\D/g,''))}">Text</a>`:''}
-        </div>`:`<div class="match-actions"><button class="btn btn-secondary btn-sm" onclick="cancelChallenge('${c.id}')">Withdraw</button>${other&&other.phone?`<a class="btn btn-secondary btn-sm" href="sms:${esc(other.phone.replace(/\\D/g,''))}">Text ${esc(other.name.split(' ')[0])}</a>`:''}</div>`}
+        </div>`:`<div class="match-actions">${c.from===m.id?`<button class="btn btn-secondary btn-sm" onclick="cancelChallenge('${c.id}')">Withdraw</button>`:''}${other&&other.phone?`<a class="btn btn-secondary btn-sm" href="sms:${esc(other.phone.replace(/\\D/g,''))}">Text ${esc(other.name.split(' ')[0])}</a>`:''}</div>`}
       </div>`;
     }).join('');
   }
   const myMatches=state.matches.filter(x=>playedIn(x,m.id)).slice(0,5);
   $('recentList').innerHTML=myMatches.length?recentMatchesHtml(myMatches,m.id):`<div class="empty"><div class="empty-icon">📋</div><div class="empty-title">No matches yet</div><div class="empty-sub">Submit your first match score to get started.</div></div>`;
 }
+function renderHomeAlerts(m){
+  const el=$('homeAlerts'); if(!el) return;
+  let html='';
+  // scores waiting for me to confirm
+  const toConfirm=state.matches.filter(x=>matchState(x)==='pending'&&onOpposingSide(x,m.id));
+  if(toConfirm.length){
+    html+=`<div class="section-head">Confirm these scores</div><div class="card" style="border-color:var(--gold)">${toConfirm.map(x=>{
+      const won=wonBy(x,m.id); const left=Math.max(0,Math.ceil((confirmDeadline(x)-Date.now())/3600000));
+      return `<div class="match-card" style="border-bottom:1px solid var(--border)">
+        <div style="font-weight:600;font-size:14px">${matchLine(x,m.id)}</div>
+        <div style="font-size:12.5px;color:var(--fg2);margin-top:2px">${esc(ladderLabel(x.ladder))} \u00b7 ${esc(x.date)} \u00b7 entered by ${esc(displayName(x.submittedBy).split(' ')[0])}</div>
+        <div style="margin-top:6px"><span class="score-pill ${won?'w':'l'}">You ${won?'won':'lost'} ${esc(x.score)}</span></div>
+        <div style="font-size:12px;color:var(--fg2);margin-top:6px">Counts automatically in ${left} hour${left===1?'':'s'} if you don\u2019t respond.</div>
+        <div class="match-actions"><button class="btn btn-green btn-sm" onclick="confirmMatch('${x.id}',true)">Confirm</button><button class="btn btn-secondary btn-sm" onclick="confirmMatch('${x.id}',false)">Dispute</button></div>
+      </div>`;}).join('')}</div>`;
+  }
+  // inactivity heads-up (season only)
+  if(seasonStarted()&&m.active!==false){
+    const starts=decayStartsMs(m), daysTo=Math.ceil((starts-Date.now())/DAY);
+    if(daysTo<=0) html+=`<div class="card" style="padding:12px 14px;margin-top:16px;border-color:var(--red)"><b style="color:var(--red)">You\u2019re sliding down the ladder.</b><div style="font-size:12.5px;color:var(--fg2);margin-top:3px;line-height:1.5">No confirmed match in over ${DECAY_GRACE} days \u2014 you lose ${DECAY_POINTS} points a week until you play. Challenge someone or accept a challenge to stop it.</div></div>`;
+    else if(daysTo<=10) html+=`<div class="card" style="padding:12px 14px;margin-top:16px;border-color:var(--gold)"><b style="color:var(--gold)">Play a match by ${fmtShort(starts-DAY)}</b><div style="font-size:12.5px;color:var(--fg2);margin-top:3px;line-height:1.5">After ${DECAY_GRACE} days without a confirmed match you start losing ${DECAY_POINTS} points a week.</div></div>`;
+  }
+  // open window
+  if(inOpenWindow(m)&&seasonStarted()) html+=`<div class="card" style="padding:12px 14px;margin-top:16px;border-color:var(--green)"><b style="color:var(--green)">Open challenges until ${fmtShort(openUntilMs(m))}</b><div style="font-size:12.5px;color:var(--fg2);margin-top:3px;line-height:1.5">You can challenge anyone in your draw to find your level fast.</div></div>`;
+  el.innerHTML=html;
+}
+function resultPill(match,viewerId){
+  const st=matchState(match);
+  if(st==='disputed') return `<span class="chip chip-red">Disputed</span>`;
+  if(st==='pending') return `<span class="chip chip-gold">Awaiting confirmation</span>`;
+  const won=wonBy(match,viewerId); return `<span class="score-pill ${won?'w':'l'}">${won?'W':'L'} ${esc(match.score)}</span>`;
+}
 function recentMatchesHtml(list,viewerId){
   if(!list.length) return `<div class="empty"><div class="empty-title">No matches recorded yet</div></div>`;
   return list.map(match=>{
     if(viewerId){
-      const won=wonBy(match,viewerId);
       return `<div class="match-card" style="border-bottom:1px solid var(--border)"><div class="match-vs"><div class="match-player">
         <div class="match-player-name">${matchLine(match,viewerId)}</div>
-        <div class="match-player-rating">${esc(ladderLabel(match.ladder))} · ${esc(match.date)}</div></div>
-        <span class="score-pill ${won?'w':'l'}">${won?'W':'L'} ${esc(match.score)}</span></div></div>`;
+        <div class="match-player-rating">${esc(ladderLabel(match.ladder))} · ${esc(match.date)}${matchState(match)!=='confirmed'?' · '+esc(match.score):''}${match.forfeit?' · forfeit':''}</div></div>
+        ${resultPill(match,viewerId)}</div></div>`;
     }
-    return `<div class="match-card" style="border-bottom:1px solid var(--border)"><div class="match-player-name">${esc(displayName(match.p1))}${match.p1Partner?' &amp; '+esc(displayName(match.p1Partner)):''} def. ${esc(displayName(match.p2))}${match.p2Partner?' &amp; '+esc(displayName(match.p2Partner)):''}</div>
+    const w1=match.winner===match.p1; const [a,b,c,d]=w1?[match.p1,match.p1Partner,match.p2,match.p2Partner]:[match.p2,match.p2Partner,match.p1,match.p1Partner];
+    return `<div class="match-card" style="border-bottom:1px solid var(--border)"><div class="match-player-name">${esc(displayName(a))}${b?' &amp; '+esc(displayName(b)):''} def. ${esc(displayName(c))}${d?' &amp; '+esc(displayName(d)):''}${matchState(match)!=='confirmed'?' <span class="chip '+(matchState(match)==='disputed'?'chip-red">Disputed':'chip-gold">Pending')+'</span>':''}</div>
       <div class="match-player-rating">${esc(ladderLabel(match.ladder))} · ${esc(match.date)} · ${esc(match.score)}</div></div>`;
   }).join('');
 }
@@ -330,7 +425,7 @@ function renderLadder(){
     return `<div class="rank-card" onclick="openPlayerSheet('${esc(p.id)}')" style="${isMe?'background:rgba(45,107,228,.07);border-left:3px solid var(--accent);':''}">
       <div class="rank-num${rank<=3?' top3':''}">${rank}</div><div class="avatar">${esc(p.initials)}</div>
       <div class="rank-info"><div class="rank-name">${esc(p.name)}${isMe?' <span style="font-size:11px;color:var(--accent-hi)">(you)</span>':''}</div>
-        <div class="rank-meta">NTRP ${esc(p.ntrp)} · ${rec.w}W ${rec.l}L${showUTR&&utr?` · <span class="utr-badge" style="vertical-align:middle"><span class="utr-label">UTR</span>${Number(utr).toFixed(2)}</span>`:''}</div></div>
+        <div class="rank-meta">${isNewMember(p)&&seasonStarted()?'<span class="chip chip-green" style="padding:1px 6px;font-size:10px">NEW</span> ':''}${decayPenalty(p)?`<span class="chip chip-red" style="padding:1px 6px;font-size:10px">\u2212${decayPenalty(p)} idle</span> `:''}NTRP ${esc(p.ntrp)} · ${rec.w}W ${rec.l}L${showUTR&&utr?` · <span class="utr-badge" style="vertical-align:middle"><span class="utr-label">UTR</span>${Number(utr).toFixed(2)}</span>`:''}</div></div>
       <div style="text-align:right"><div class="rank-rating" style="color:${color}">${rating}</div><div style="font-size:11px;color:var(--fg2)">pts</div></div></div>`;
   }).join('')}</div>`;
 }
@@ -414,7 +509,12 @@ function populateOpponentsFor(ladder,selectId){
   const sel=$(selectId), keep=sel.value;
   if(!ladder||!LADDERS[ladder]){ sel.innerHTML=`<option value="">—</option>`; return; }
   const ranked=getRanked(ladder), myRank=ranked.findIndex(p=>p.id===state.email);
-  const challengeable=myRank>0?ranked.filter((p,i)=>i<myRank).slice(-4):[];
+  const m=me(); const open=m&&inOpenWindow(m);
+  const challengeable=open?ranked.filter(p=>p.id!==state.email):(myRank>0?ranked.filter((p,i)=>i<myRank).slice(-4):[]);
+  const note=$('chlNote');
+  if(note&&selectId==='chlOpponent') note.innerHTML=open
+    ?`<div style="font-size:12.5px;line-height:1.5;padding:10px 12px;border-radius:8px;background:rgba(58,170,106,.12);color:var(--fg);margin-bottom:14px">🟢 <b>Open challenges until ${fmtShort(openUntilMs(m))}.</b> ${seasonStarted()?'As a new member':'During the pre-season and the first 3 weeks of the season'} you can challenge anyone in your draw. After that it\u2019s up to 4 spots above you.</div>`
+    :`<div style="font-size:12.5px;color:var(--fg2);margin-bottom:14px">You can challenge anyone up to 4 spots above you. They have ${CHALLENGE_DAYS} days to play.</div>`;
   sel.innerHTML=challengeable.length?challengeable.map(p=>`<option value="${esc(p.id)}">${esc(p.name)} (#${ranked.indexOf(p)+1})</option>`).join(''):`<option value="">${myRank===0?'You’re #1 — nobody above you!':'No eligible opponents above you'}</option>`;
   if([...sel.options].some(o=>o.value===keep)) sel.value=keep;
 }
@@ -438,14 +538,30 @@ function populateOppPartner(){
   oSel.innerHTML=ranked.filter(p=>p.id!==state.email&&p.id!==opp&&p.id!==partner).map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
   if([...oSel.options].some(o=>o.value===keep2)) oSel.value=keep2;
 }
+// ── challenge clock ──
+function challengeDeadline(c){ return tsMs(c.createdAt)+CHALLENGE_DAYS*DAY; }
+function isOpenChallenge(c){ return c.status==='pending'||c.status==='accepted'; }
+function isExpired(c){ return isOpenChallenge(c)&&Date.now()>challengeDeadline(c); }
+function clockLabel(c){
+  if(isExpired(c)) return `<span class="chip chip-red">Expired \u2014 Jordan will decide</span>`;
+  const left=challengeDeadline(c)-Date.now(); const d=Math.floor(left/DAY), h=Math.floor((left%DAY)/3600000);
+  const txt=d>=1?`${d} day${d===1?'':'s'} left to play`:`${h} hour${h===1?'':'s'} left to play`;
+  return `<span class="chip ${d<2?'chip-red':'chip-gold'}">${txt}</span>`;
+}
 async function sendChallenge(){
   const to=$('chlOpponent').value, ladder=$('chlLadder').value;
   if(!to){ toast('No eligible opponents above you'); return; }
-  if(state.challenges.some(c=>c.status==='pending'&&c.from===state.email&&c.to===to&&c.ladder===ladder)){ toast('You already have a pending challenge with them'); return; }
+  if(state.challenges.some(c=>isOpenChallenge(c)&&!isExpired(c)&&c.ladder===ladder&&((c.from===state.email&&c.to===to)||(c.from===to&&c.to===state.email)))){ toast('You already have an open challenge with them'); return; }
   try{
     await db.collection('challenges').add({from:state.email,to,ladder,date:$('chlDate').value,message:$('chlMessage').value.trim().slice(0,300),status:'pending',createdAt:FieldValue.serverTimestamp()});
-    $('chlMessage').value=''; toast('Challenge sent! 🎾');
+    $('chlMessage').value=''; toast(`Challenge sent! Play by ${fmtShort(Date.now()+CHALLENGE_DAYS*DAY)} 🎾`);
   }catch(e){ toast('Could not send: '+e.message); }
+}
+async function confirmMatch(id,ok){
+  try{
+    await db.collection('matches').doc(id).update({status:ok?'confirmed':'disputed',confirmedBy:state.email,confirmedAt:FieldValue.serverTimestamp()});
+    toast(ok?'Confirmed \u2014 rankings updated ✓':'Disputed \u2014 Jordan will sort it out');
+  }catch(e){ toast('Could not update: '+e.message); }
 }
 async function respondChallenge(cid,status){
   try{ await db.collection('challenges').doc(cid).update({status,respondedAt:FieldValue.serverTimestamp()}); toast(status==='accepted'?'Challenge accepted! Set up a time by text.':'Challenge declined.'); }
@@ -465,11 +581,11 @@ async function submitScore(){
   if(dbl){ if(!p1Partner||!p2Partner){ toast('Select both partners'); return; } if(new Set([state.email,p1Partner,opp,p2Partner]).size<4){ toast('Each player can only appear once'); return; } }
   const winner=result==='win'?state.email:opp;
   try{
-    await db.collection('matches').add({p1:state.email,p1Partner,p2:opp,p2Partner,ladder,score:score.slice(0,40),winner,date,submittedBy:state.email,createdAt:FieldValue.serverTimestamp()});
+    await db.collection('matches').add({p1:state.email,p1Partner,p2:opp,p2Partner,ladder,score:score.slice(0,40),winner,date,submittedBy:state.email,status:'pending',createdAt:FieldValue.serverTimestamp()});
     // auto-close any pending challenge between these two in this draw
-    state.challenges.filter(c=>c.status!=='declined'&&c.status!=='played'&&c.ladder===ladder&&((c.from===state.email&&c.to===opp)||(c.from===opp&&c.to===state.email)))
+    state.challenges.filter(c=>isOpenChallenge(c)&&c.ladder===ladder&&((c.from===state.email&&c.to===opp)||(c.from===opp&&c.to===state.email)))
       .forEach(c=>db.collection('challenges').doc(c.id).update({status:'played'}).catch(()=>{}));
-    $('scoreInput').value=''; toast('Score submitted! Rankings updated. 🎾');
+    $('scoreInput').value=''; toast(`Score sent \u2014 it counts once ${displayName(opp).split(' ')[0]} confirms (or automatically in ${CONFIRM_HOURS} hours)`);
   }catch(e){ toast('Could not submit: '+e.message); }
 }
 
@@ -570,6 +686,7 @@ function renderAdmin(){
   if(adminTab==='players') renderAdminPlayers($('adminSearch').value.toLowerCase());
   if(adminTab==='matches') renderAdminMatches();
   renderSignupBadge();
+  renderMatchBadge();
 }
 function renderSignupBadge(){ const n=state.signups.filter(s=>s.status==='pending').length; $('signupCount').textContent=n; $('signupCount').hidden=!n; }
 function renderSignups(){
@@ -627,13 +744,42 @@ function renderAdminPlayers(filter=''){
     </div>`;
   }).join(''):`<div class="empty"><div class="empty-title">No players yet</div><div class="empty-sub">Approve a sign-up or add one from the Add tab.</div></div>`;
 }
+function adminAlerts(){ return {disputed:state.matches.filter(m=>matchState(m)==='disputed'), expired:state.challenges.filter(isExpired)}; }
+function renderMatchBadge(){ const a=adminAlerts(), n=a.disputed.length+a.expired.length; const el=$('matchAlertCount'); if(el){ el.textContent=n; el.hidden=!n; } }
 function renderAdminMatches(){
-  $('adminMatchList').innerHTML=state.matches.length?state.matches.map(m=>`<div class="match-card" style="border-bottom:1px solid var(--border)"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+  const a=adminAlerts();
+  let att='';
+  if(a.disputed.length||a.expired.length){
+    att=`<div class="section-head" style="padding-top:0;color:var(--red)">Needs your attention</div><div class="card" style="border-color:var(--red);margin-bottom:16px">`+
+      a.disputed.map(m=>`<div class="match-card" style="border-bottom:1px solid var(--border)">
+        <div><span class="chip chip-red">Disputed score</span></div>
+        <div style="font-weight:600;font-size:14px;margin-top:6px">${esc(displayName(m.p1))}${m.p1Partner?' &amp; '+esc(displayName(m.p1Partner)):''} vs ${esc(displayName(m.p2))}${m.p2Partner?' &amp; '+esc(displayName(m.p2Partner)):''}</div>
+        <div style="font-size:12.5px;color:var(--fg2);margin-top:2px;line-height:1.5">${esc(ladderLabel(m.ladder))} \u00b7 ${esc(m.date)} \u00b7 ${esc(m.score)}<br>Entered by ${esc(displayName(m.submittedBy))} (winner: ${esc(displayName(m.winner))}) \u00b7 disputed by ${esc(displayName(m.confirmedBy))}</div>
+        <div class="match-actions"><button class="btn btn-green btn-sm" onclick="adminResolveMatch('${m.id}')">Count it</button><button class="btn btn-danger btn-sm" onclick="deleteMatch('${m.id}')">Delete</button></div></div>`).join('')+
+      a.expired.map(c=>`<div class="match-card" style="border-bottom:1px solid var(--border)">
+        <div><span class="chip chip-gold">Challenge expired ${fmtShort(challengeDeadline(c))}</span></div>
+        <div style="font-weight:600;font-size:14px;margin-top:6px">${esc(displayName(c.from))} challenged ${esc(displayName(c.to))}</div>
+        <div style="font-size:12.5px;color:var(--fg2);margin-top:2px">${esc(ladderLabel(c.ladder))} \u00b7 status: ${esc(c.status)}</div>
+        <div class="match-actions"><button class="btn btn-primary btn-sm" onclick="awardForfeit('${c.id}')">Forfeit win to ${esc(displayName(c.from).split(' ')[0])}</button><button class="btn btn-secondary btn-sm" onclick="voidChallenge('${c.id}')">Void</button></div></div>`).join('')+
+      `</div><div class="section-head" style="padding-top:0">All matches</div>`;
+  }
+  renderMatchBadge();
+  $('adminMatchList').innerHTML=att+'<div class="card">'+(state.matches.length?state.matches.map(m=>{const st=matchState(m);return `<div class="match-card" style="border-bottom:1px solid var(--border)"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <div style="min-width:0"><div style="font-weight:600;font-size:14px">${esc(displayName(m.p1))}${m.p1Partner?' &amp; '+esc(displayName(m.p1Partner)):''} vs ${esc(displayName(m.p2))}${m.p2Partner?' &amp; '+esc(displayName(m.p2Partner)):''}</div>
-      <div style="font-size:12px;color:var(--fg2)">${esc(ladderLabel(m.ladder))} · ${esc(m.date)} · W: ${esc(displayName(m.winner))} · by ${esc(displayName(m.submittedBy))}</div><div style="font-size:13px;margin-top:2px">${esc(m.score)}</div></div>
-      <button class="btn btn-danger btn-sm" onclick="deleteMatch('${m.id}')">Del</button></div></div>`).join('')
-    :`<div class="empty"><div class="empty-title">No matches recorded</div></div>`;
+      <div style="font-size:12px;color:var(--fg2)">${esc(ladderLabel(m.ladder))} · ${esc(m.date)} · W: ${esc(displayName(m.winner))} · by ${esc(displayName(m.submittedBy))}</div><div style="font-size:13px;margin-top:2px">${esc(m.score)} ${st==='confirmed'?'':'<span class="chip '+(st==='disputed'?'chip-red">Disputed':'chip-gold">Pending')+'</span>'}</div></div>
+      <button class="btn btn-danger btn-sm" onclick="deleteMatch('${m.id}')">Del</button></div></div>`;}).join('')
+    :`<div class="empty"><div class="empty-title">No matches recorded</div></div>`)+'</div>';
 }
+async function adminResolveMatch(id){ try{ await db.collection('matches').doc(id).update({status:'confirmed',resolvedBy:state.email}); toast('Counted \u2014 rankings updated'); }catch(e){ toast('Could not update: '+e.message); } }
+async function awardForfeit(cid){
+  const c=state.challenges.find(x=>x.id===cid); if(!c) return;
+  try{
+    await db.collection('matches').add({p1:c.from,p1Partner:null,p2:c.to,p2Partner:null,ladder:c.ladder,score:'Forfeit',winner:c.from,date:today(),submittedBy:state.email,status:'confirmed',forfeit:true,createdAt:FieldValue.serverTimestamp()});
+    await db.collection('challenges').doc(cid).update({status:'forfeited'});
+    toast(`Forfeit win recorded for ${displayName(c.from).split(' ')[0]}`);
+  }catch(e){ toast('Could not record: '+e.message); }
+}
+async function voidChallenge(cid){ try{ await db.collection('challenges').doc(cid).update({status:'void'}); toast('Challenge voided'); }catch(e){ toast('Could not update: '+e.message); } }
 let pendingDelete=null;
 async function deleteMatch(id){
   if(pendingDelete!==id){ pendingDelete=id; toast('Tap Del again to confirm'); setTimeout(()=>{ if(pendingDelete===id) pendingDelete=null; },4000); return; }
