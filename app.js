@@ -899,7 +899,7 @@ function welcomeEmail(p){
   `PROFILE — Add your phone number and when you usually like to play, so other members can reach you. Your full match history is here too.\n\n`+
   `? BUTTON (top right) — The complete rules and FAQ, any time.`+
   H('Challenges')+
-  `• You can challenge anyone up to 4 spots above you in the same draw. New members can challenge anyone in their draw for their first ${OPEN_DAYS/7} weeks — and right now, during the free pre-season, everyone can.\n`+
+  `• You can challenge anyone up to 4 spots above you in the same draw. New members can challenge anyone in their draw for their first ${OPEN_DAYS/7} weeks${seasonStarted()?'':' — and right now, during the free pre-season, everyone can'}.\n`+
   `• Once a challenge is sent you have ${CHALLENGE_DAYS} days to play it. Text each other to pick a time, then book a court.\n`+
   `• Matches are best of 3 sets, with a 10-point tiebreak in place of a third set.`+
   H('Scores')+
