@@ -914,7 +914,7 @@ function welcomeEmail(p){
   H('Cost')+
   `The ladder is free until the official season starts ${seasonLabel()}. After that it's $10 a month, billed as a house charge on your member account. You can cancel any time by letting me know.`+
   `\n\nAny questions, just reply to this email or find me at the club. See you on the courts!\n\n`+
-  `Jordan Boyls\nDirector of Tennis, Gold River Sports Club\nJordanB@sparetimesportsclubs.com`;
+  `Jordan Boyls\nDirector of Tennis, Gold River Sports Club\njpboyls@gmail.com`;
 }
 function smsHref(phone,body){ const n=(phone||'').replace(/\D/g,''); const ios=/iPad|iPhone|iPod/.test(navigator.userAgent); return `sms:${n}${ios?'&':'?'}body=${encodeURIComponent(body)}`; }
 function openWelcome(id){
@@ -1172,7 +1172,7 @@ function renderRules(){
     q('Will I get notifications?',`<p>Not yet. Open the app to check for new challenges, scores to confirm and practice requests — they’re all on your Home screen.</p>`),
     q('How do other members contact me?',`<p>Through the phone number and email on your profile. Update your number and usual availability under <b>Profile → My contact info</b>.</p>`),
     q('The app looks out of date',`<p>Close it completely and reopen it. Updates usually appear within a few minutes.</p>`),
-    q('Who do I contact with questions?',`<p>Jordan Boyls, Director of Tennis — <span style="user-select:all;color:var(--accent-hi);font-weight:600">JordanB@sparetimesportsclubs.com</span></p>`),
+    q('Who do I contact with questions?',`<p>Jordan Boyls, Director of Tennis — <span style="user-select:all;color:var(--accent-hi);font-weight:600">jpboyls@gmail.com</span></p>`),
   ])}`;
   el.dataset.sig=sig;
 }

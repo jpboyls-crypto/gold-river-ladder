@@ -122,7 +122,7 @@ pre.sum{white-space:pre-wrap;word-break:break-word;font:13.5px/1.55 Inter,system
   </div>
 
   <div class="foot" style="text-align:left;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px"><b style="color:var(--fg)">The fine print.</b> The official season runs January through December with quarterly ladder tournaments at the end of March, June, September and December. Join after January 1 and your first month is free, then $10/month. Cancel anytime by letting Jordan know — billing stops at the end of that month.</div>
-  <div class="foot">Prefer paper? Grab a flyer at the front desk, fill out the bottom, and leave it in Jordan Boyls' box.<br>Questions: JordanB@sparetimesportsclubs.com · Gold River Sports Club, 2201 Gold Rush Dr.</div>
+  <div class="foot">Prefer paper? Grab a flyer at the front desk, fill out the bottom, and leave it in Jordan Boyls' box.<br>Questions: jpboyls@gmail.com · Gold River Sports Club, 2201 Gold Rush Dr.</div>
 </div>
 
 <script>
@@ -169,7 +169,7 @@ const db=firebase.firestore();
     ].join('\n');
     $('sum').textContent=summary;
     saveSignup({name:$('name').value.trim(),email:$('email').value.trim().toLowerCase(),phone:$('phone').value.trim(),draws,placement:g.value,ntrp:$('ntrp').value,utr:$('utr').value?Number($('utr').value):null,avail:$('avail').value.trim(),consent18:true,consentFee:true,status:'pending',createdAt:firebase.firestore.FieldValue.serverTimestamp(),source:'web'});
-    $('mail').href='mailto:JordanB@sparetimesportsclubs.com?subject='+encodeURIComponent('Tennis Ladder Sign-Up — '+$('name').value.trim())+'&body='+encodeURIComponent(summary);
+    $('mail').href='mailto:jpboyls@gmail.com?subject='+encodeURIComponent('Tennis Ladder Sign-Up — '+$('name').value.trim())+'&body='+encodeURIComponent(summary);
     $('f').hidden=true; $('done').hidden=false; window.scrollTo({top:$('done').offsetTop-20,behavior:'smooth'});
   });
   $('edit').addEventListener('click',()=>{$('done').hidden=true;$('f').hidden=false;});
