@@ -29,6 +29,15 @@ const DECAY_POINTS   = 10;  // points lost per week once sliding
 const DECAY_CAP      = 100; // max points lost in any single idle stretch
 const OPEN_DAYS      = 21;  // new members can challenge anyone in their draw for this long
 const DAY = 86400000;
+// Court booking (Club Automation). Opens the tennis booking page on a given day.
+const BOOKING_URL = 'https://sparetime.clubautomation.com/tennis';
+function bookingHref(dateStr){
+  let d = dateStr ? new Date(dateStr+'T12:00:00') : new Date();
+  if(isNaN(d) || d < new Date(new Date().toDateString())) d = new Date();
+  const mm=String(d.getMonth()+1).padStart(2,'0'), dd=String(d.getDate()).padStart(2,'0');
+  return `${BOOKING_URL}?date=${mm}/${dd}/${d.getFullYear()}`;
+}
+function bookBtn(dateStr,label){ return `<a class="btn btn-secondary btn-sm" href="${bookingHref(dateStr)}" target="_blank" rel="noopener">\u{1F4C5} ${label||'Book a court'}</a>`; }
 const NTRP_BASE = {'2.5':1000,'3.0':1100,'3.5':1200,'4.0':1400,'4.5':1600,'5.0':1800,'5.0+':1800};
 
 // ── live state (filled by Firestore listeners) ──
@@ -336,7 +345,7 @@ function renderHome(){
           <button class="btn btn-green btn-sm" onclick="respondChallenge('${c.id}','accepted')">Accept</button>
           <button class="btn btn-secondary btn-sm" onclick="respondChallenge('${c.id}','declined')">Decline</button>
           ${other&&other.phone?`<a class="btn btn-secondary btn-sm" href="sms:${esc(other.phone.replace(/\\D/g,''))}">Text</a>`:''}
-        </div>`:`<div class="match-actions">${c.from===m.id?`<button class="btn btn-secondary btn-sm" onclick="cancelChallenge('${c.id}')">Withdraw</button>`:''}${other&&other.phone?`<a class="btn btn-secondary btn-sm" href="sms:${esc(other.phone.replace(/\\D/g,''))}">Text ${esc(other.name.split(' ')[0])}</a>`:''}</div>`}
+        </div>`:`<div class="match-actions">${c.status==='accepted'?bookBtn(c.date):''}${c.from===m.id?`<button class="btn btn-secondary btn-sm" onclick="cancelChallenge('${c.id}')">Withdraw</button>`:''}${other&&other.phone?`<a class="btn btn-secondary btn-sm" href="sms:${esc(other.phone.replace(/\\D/g,''))}">Text ${esc(other.name.split(' ')[0])}</a>`:''}</div>`}
       </div>`;
     }).join('');
   }
@@ -503,6 +512,7 @@ function initChallengePage(keep){
   if(keep){ if(mine.includes(c)) $('chlLadder').value=c; if(mine.includes(s)) $('scoreLadder').value=s; }
   populateOpponentsFor($('chlLadder').value,'chlOpponent');
   populateScoreOpponents();
+  const bc=$('bookCard'); if(bc) bc.href=bookingHref();
   if(!keep){ const d=new Date(); d.setDate(d.getDate()+7); $('chlDate').value=d.toISOString().split('T')[0]; $('scoreDatePlayed').value=today(); }
 }
 function populateOpponentsFor(ladder,selectId){
