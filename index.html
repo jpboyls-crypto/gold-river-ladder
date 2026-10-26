@@ -394,6 +394,7 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
   <div class="pad">
     <div id="homeAlerts"></div>
     <div id="homeEvent"></div>
+    <div id="homeAwards"></div>
     <div class="section-head">Open Challenges</div>
     <div class="card" id="pendingList"></div>
     <div class="section-head" style="margin-top:8px">Recent Matches</div>
@@ -760,6 +761,11 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
             <input type="checkbox" id="addMixed"> Mixed Doubles Ladder
           </label>
         </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px">
+            <input type="checkbox" id="addSocial" onchange="if(this.checked){['addSingles','addDoubles','addMixed'].forEach(i=>document.getElementById(i).checked=false)}"> 🥂 Social member — not ranked (practice, events, member pricing)
+          </label>
+        </div>
         <button class="btn btn-primary btn-full" onclick="addPlayer()">Add Member to Ladder</button>
         <div style="font-size:12px;color:var(--fg2);margin-top:10px;line-height:1.5">Starting points come from NTRP (2.5 = 1000 … 5.0 = 1800). Adjust a player’s base points later from their profile sheet.</div>
       </div>
@@ -827,6 +833,6 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
 <!-- TOAST -->
 <div id="toast" style="position:fixed;bottom:calc(72px + env(safe-area-inset-bottom,0px) + 12px);left:50%;transform:translateX(-50%) translateY(10px);background:#222b3d;color:#fff;padding:10px 20px;border-radius:30px;font-size:14px;font-weight:600;z-index:500;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;white-space:nowrap"></div>
 
-<script src="app.js?v=20261025o"></script>
+<script src="app.js?v=20261025q"></script>
 </body>
 </html>

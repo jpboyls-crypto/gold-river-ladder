@@ -80,7 +80,9 @@ pre.sum{white-space:pre-wrap;word-break:break-word;font:13.5px/1.55 Inter,system
         <label class="chip"><input type="checkbox" value="Singles">Singles</label>
         <label class="chip"><input type="checkbox" value="Doubles">Doubles</label>
         <label class="chip"><input type="checkbox" value="Mixed Doubles">Mixed Doubles</label>
+        <label class="chip"><input type="checkbox" value="Social only">🥂 Social only — no rankings</label>
       </div>
+      <div class="hint">Social only: find games on the practice board, join the monthly mixers and socials, and get member pricing, without being ranked.</div>
     </div>
     <div class="fg">
       <label class="l">Ladder draw placement</label>
@@ -130,6 +132,10 @@ firebase.initializeApp({apiKey:"AIzaSyAOUJ9rK9QtAGfMHy7WEAI1Wl51d7VnSz0",authDom
 const db=firebase.firestore();
 (function(){
   const $=id=>document.getElementById(id);
+  document.querySelectorAll('#draws input').forEach(i=>i.addEventListener('change',()=>{
+    if(!i.checked) return;
+    document.querySelectorAll('#draws input').forEach(o=>{ if(o!==i&&((i.value==='Social only')!==(o.value==='Social only'))&&o.checked){ o.checked=false; o.parentElement.classList.remove('on'); } });
+  }));
   document.querySelectorAll('.chip input').forEach(i=>{
     const sync=()=>{ if(i.type==='radio'){document.querySelectorAll('#gender .chip').forEach(c=>c.classList.toggle('on',c.querySelector('input').checked));} else i.parentElement.classList.toggle('on',i.checked); };
     i.addEventListener('change',sync);
@@ -148,8 +154,9 @@ const db=firebase.firestore();
     if(!$('name').value.trim()) return err('Please enter your name.');
     if(!/^\S+@\S+\.\S+$/.test($('email').value.trim())) return err('Please enter a valid email.');
     if($('phone').value.replace(/\D/g,'').length<10) return err('Please enter a mobile number.');
-    if(!draws.length) return err('Pick at least one draw.');
-    if(!g) return err('Choose men’s or women’s draws for placement.');
+    if(!draws.length) return err('Pick at least one draw, or Social only.');
+    const socialOnly=draws.length===1&&draws[0]==='Social only';
+    if(!g&&!socialOnly) return err('Choose men’s or women’s draws for placement.');
     if(!$('ntrp').value) return err('Choose your level.');
     if(!$('c18').checked) return err('Please confirm you’re 18+ and a current member.');
     if(!$('cfee').checked) return err('Please authorize the $10/month house charge.');
@@ -160,7 +167,7 @@ const db=firebase.firestore();
       'Email: '+$('email').value.trim(),
       'Phone: '+$('phone').value.trim(),
       'Draws: '+draws.join(', '),
-      'Placement: '+g.value,
+      'Placement: '+(g?g.value:'Social only (not ranked)'),
       'Level: USTA '+$('ntrp').value+($('utr').value?' | UTR '+$('utr').value:''),
       'Availability: '+($('avail').value.trim()||'—'),
       'Confirmed: 18+ and current member — YES',
@@ -168,7 +175,7 @@ const db=firebase.firestore();
       'Submitted: '+new Date().toLocaleDateString()
     ].join('\n');
     $('sum').textContent=summary;
-    saveSignup({name:$('name').value.trim(),email:$('email').value.trim().toLowerCase(),phone:$('phone').value.trim(),draws,placement:g.value,ntrp:$('ntrp').value,utr:$('utr').value?Number($('utr').value):null,avail:$('avail').value.trim(),consent18:true,consentFee:true,status:'pending',createdAt:firebase.firestore.FieldValue.serverTimestamp(),source:'web'});
+    saveSignup({name:$('name').value.trim(),email:$('email').value.trim().toLowerCase(),phone:$('phone').value.trim(),draws,placement:g?g.value:'Social only',ntrp:$('ntrp').value,utr:$('utr').value?Number($('utr').value):null,avail:$('avail').value.trim(),consent18:true,consentFee:true,status:'pending',createdAt:firebase.firestore.FieldValue.serverTimestamp(),source:'web'});
     $('mail').href='mailto:jpboyls@gmail.com?subject='+encodeURIComponent('Tennis Ladder Sign-Up — '+$('name').value.trim())+'&body='+encodeURIComponent(summary);
     $('f').hidden=true; $('done').hidden=false; window.scrollTo({top:$('done').offsetTop-20,behavior:'smooth'});
   });

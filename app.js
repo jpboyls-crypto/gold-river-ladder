@@ -343,6 +343,7 @@ function goPage(name,btn){
 // ═══════════════════════════════════════════
 function renderHome(){
   renderHomeEvent();
+  renderHomeAwards();
   const m=me();
   if(!m){ // admin without a player record
     $('heroName').textContent='Admin'; $('heroRank').textContent='You’re signed in as the ladder admin.';
@@ -355,7 +356,7 @@ function renderHome(){
   const rec=record(m);
   $('heroName').textContent=m.name;
   const parts=playerLadders(m).map(t=>`#${rankIn(m,t)} ${LADDERS[t].short}`);
-  $('heroRank').textContent=parts.join(' · ')||'Not enrolled in any ladder';
+  $('heroRank').textContent=parts.join(' · ')||(m.social?'Social member · practice, events & member pricing':'Not enrolled in any ladder');
   $('heroWins').textContent=rec.w; $('heroLosses').textContent=rec.l;
   const firstL=playerLadders(m)[0]; $('heroRating').textContent=firstL?getRating(m,firstL):'—';
   renderHomeAlerts(m);
@@ -544,6 +545,7 @@ function closeSheet(id){ $(id).classList.remove('open') }
 function initChallengePage(keep){
   const m=me(); if(!m){ $('chlLadder').innerHTML=$('scoreLadder').innerHTML=`<option value="">Admins without a player record can’t play</option>`; return; }
   const mine=playerLadders(m);
+  if(!mine.length&&$('chlNote')) $('chlNote').innerHTML=`<div style="font-size:12.5px;line-height:1.5;padding:10px 12px;border-radius:8px;background:rgba(155,114,240,.12);color:var(--fg);margin-bottom:14px">🥂 <b>You’re a social member</b>, so you’re not on the ranked ladder. Find games on the <b>Practice</b> tab and join the monthly mixers on <b>Events</b>. Want to be ranked? Ask Jordan to add you to a draw.</div>`;
   const opts=mine.length?mine.map(t=>`<option value="${t}">${LADDERS[t].label}</option>`).join(''):`<option value="">Not enrolled in any ladder</option>`;
   const c=$('chlLadder').value, s=$('scoreLadder').value;
   $('chlLadder').innerHTML=opts; $('scoreLadder').innerHTML=opts;
@@ -649,10 +651,11 @@ function renderProfile(){
   const mine=playerLadders(m), rec=record(m);
   $('profileAvatar').textContent=m.initials; $('profileName').textContent=m.name;
   $('profileMember').textContent=(m.membership==='full'?'Full Member':'Tennis Member')+' — Gold River SC';
-  $('profileChips').innerHTML=mine.map(t=>`<span class="chip ${LADDERS[t].chip}">${LADDERS[t].short} #${rankIn(m,t)}</span>`).join('');
+  $('profileChips').innerHTML=mine.length?mine.map(t=>`<span class="chip ${LADDERS[t].chip}">${LADDERS[t].short} #${rankIn(m,t)}</span>`).join(''):(m.social?'<span class="chip chip-purple">🥂 Social member</span>':'');
   const rankItems=mine.map(t=>`<div style="text-align:center"><div style="font-size:10px;color:var(--fg2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">${LADDERS[t].short}</div>
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:32px;font-weight:800;color:${LADDERS[t].color}">#${rankIn(m,t)}</div><div style="font-size:12px;color:var(--fg2)">${getRating(m,t)} pts</div></div>`);
-  const g=$('profRanks'); g.style.gridTemplateColumns=`repeat(${Math.min(3,Math.max(1,rankItems.length))},1fr)`; g.innerHTML=rankItems.join('');
+  const g=$('profRanks'); g.style.gridTemplateColumns=`repeat(${Math.min(3,Math.max(1,rankItems.length))},1fr)`;
+  g.innerHTML=rankItems.length?rankItems.join(''):`<div style="font-size:13px;color:var(--fg2);line-height:1.5">${m.social?'You’re a <b style="color:var(--fg)">social member</b> — not ranked. Use the Practice tab to find games and the Events tab for socials and mixers. Want to join a ladder draw? Ask Jordan; it’s free to switch.':'You’re not in any ladder draw yet. Ask Jordan to add you.'}</div>`;
   const utrParts=[];
   if(m.utrSingles) utrParts.push(`<div><div style="font-size:10px;color:var(--purple);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">UTR Singles</div><span class="utr-badge" style="font-size:14px;padding:4px 10px"><span class="utr-label">UTR</span>${Number(m.utrSingles).toFixed(2)}</span></div>`);
   if(m.utrDoubles) utrParts.push(`<div><div style="font-size:10px;color:var(--purple);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">UTR Doubles</div><span class="utr-badge" style="font-size:14px;padding:4px 10px"><span class="utr-label">UTR</span>${Number(m.utrDoubles).toFixed(2)}</span></div>`);
@@ -760,6 +763,7 @@ async function approveSignup(id){
     name:s.name.trim(), initials:initialsOf(s.name), email, phone:s.phone||'', ntrp:NTRP_BASE[ntrp]?ntrp:'3.5',
     gender:(s.placement||'').startsWith('Women')?'F':'M', membership:existing.membership||'full',
     singles:draws.includes('Singles'), doubles:draws.includes('Doubles'), mixed:draws.includes('Mixed Doubles'),
+    social:!draws.some(d=>['Singles','Doubles','Mixed Doubles'].includes(d)),
     utrSingles:s.utr?Number(s.utr):(existing.utrSingles??null), utrDoubles:existing.utrDoubles??null,
     availability:s.avail||existing.availability||'', active:true, billingStart:existing.billingStart||'2027-01-01',
     baseSingles:existing.baseSingles??NTRP_BASE[ntrp]??1200, baseDoubles:existing.baseDoubles??NTRP_BASE[ntrp]??1200, baseMixed:existing.baseMixed??NTRP_BASE[ntrp]??1200,
@@ -790,7 +794,7 @@ function renderAdminPlayers(filter=''){
         <span class="chip ${p.active!==false?'chip-green':'chip-red'}">${p.active!==false?'Active':'Inactive'}</span>
         <span style="color:var(--fg2);font-size:20px;line-height:1">\u203a</span>
       </div>
-      <div class="pcard-stats">${draws||'<span class="pstat">No draws</span>'}${utr}<span class="pstat">${rec.w}W\u2013${rec.l}L</span><span class="pstat">Billing <b>${esc(p.billingStart||'\u2014')}</b></span></div>
+      <div class="pcard-stats">${draws||(p.social?'<span class="pstat" style="color:var(--purple)">🥂 Social member</span>':'<span class="pstat">No draws</span>')}${utr}<span class="pstat">${rec.w}W\u2013${rec.l}L</span><span class="pstat">Billing <b>${esc(p.billingStart||'\u2014')}</b></span></div>
     </div>`;
   }).join(''):`<div class="empty"><div class="empty-title">No players yet</div><div class="empty-sub">Approve a sign-up or add one from the Add tab.</div></div>`;
 }
@@ -848,13 +852,14 @@ async function addPlayer(){
   const id = paper ? 'paper-'+name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')+'-'+Math.random().toString(36).slice(2,6) : email;
   const ntrp=$('addNTRP').value, base=NTRP_BASE[ntrp]||1200;
   const singles=$('addSingles').checked, doubles=$('addDoubles').checked, mixed=$('addMixed').checked;
-  if(!singles&&!doubles&&!mixed){ toast('Enroll in at least one ladder'); return; }
+  const social=$('addSocial').checked&&!singles&&!doubles&&!mixed;
+  if(!singles&&!doubles&&!mixed&&!social){ toast('Pick at least one draw, or tick Social member'); return; }
   if(!paper&&getPlayer(email)){ toast('That email is already on the ladder'); return; }
   try{
     await db.collection('players').doc(id).set({
       name,initials:initialsOf(name),email:paper?(email||''):email,paper,phone:$('addPhone').value.trim(),ntrp,gender:$('addGender').value,membership:$('addMembership').value,
       utrSingles:parseFloat($('addUTRS').value)||null,utrDoubles:parseFloat($('addUTRD').value)||null,
-      singles,doubles,mixed,active:true,baseSingles:base,baseDoubles:base,baseMixed:base,billingStart:'2027-01-01',availability:'',createdAt:FieldValue.serverTimestamp(),approvedBy:state.email
+      singles,doubles,mixed,social,active:true,baseSingles:base,baseDoubles:base,baseMixed:base,billingStart:'2027-01-01',availability:'',createdAt:FieldValue.serverTimestamp(),approvedBy:state.email
     });
     ['addName','addEmail','addPhone','addUTRS','addUTRD'].forEach(x=>$(x).value='');
     $('addPaper').checked=false; togglePaperForm();
@@ -873,7 +878,8 @@ async function adminSavePlayer(id){
     await db.collection('players').doc(id).update({
       baseSingles:num($('admBaseS').value)??1200, baseDoubles:num($('admBaseD').value)??1200, baseMixed:num($('admBaseM').value)??1200,
       utrSingles:num($('admUtrS').value), utrDoubles:num($('admUtrD').value), billingStart:$('admBilling').value||'',
-      singles:$('admSingles').checked, doubles:$('admDoubles').checked, mixed:$('admMixed').checked
+      singles:$('admSingles').checked, doubles:$('admDoubles').checked, mixed:$('admMixed').checked,
+      social:!$('admSingles').checked&&!$('admDoubles').checked&&!$('admMixed').checked
     });
     toast('Saved'); closeSheet('playerSheet');
   }catch(e){ toast('Could not save: '+e.message); }
@@ -906,7 +912,7 @@ function welcomeEmail(p){
   const tourneys=state.events.filter(e=>e.type==='tournament'&&(e.date||'')>=today()).sort((a,b)=>a.date.localeCompare(b.date));
   return `Hi ${first},\n\n`+
   `You're officially on the Gold River Tennis Ladder — welcome! `+
-  `${draws.length?`You're entered in ${draws.length===1?'the '+draws[0]+' draw':draws.slice(0,-1).join(', ')+' and '+draws.slice(-1)+' draws'}. `:''}`+
+  `${draws.length?`You're entered in ${draws.length===1?'the '+draws[0]+' draw':draws.slice(0,-1).join(', ')+' and '+draws.slice(-1)+' draws'}. `:(p.social?`You've joined as a social member, so you won't be ranked: the app is your way to find games, sign up for socials and the monthly mixers, and get member pricing. You can join a ranked draw any time. `:'')}`+
   `Everything runs through the ladder app on your phone: challenges, scores, rankings, finding hitting partners, and events. Here's how to get set up and what you can do with it.`+
   H('Get set up (2 minutes)')+setupSteps(p)+
   H('How the ladder works')+
@@ -918,7 +924,7 @@ function welcomeEmail(p){
   `LADDER — The live standings for all five draws. Tap anyone's name to see their record and contact info (phone, email, usual availability) so you can set up a match. Turn on "Show UTR" to see UTR ratings. Doubles ladders also show the Top Pairings.\n\n`+
   `PLAY — Challenge a player and submit match scores. There's also a Book a court button that opens Club Automation (courts open 48 hours in advance).\n\n`+
   `PRACTICE — Just want to hit? Post the days and times you're free and the kind of session you want (rally, drills, practice set). Members near your level see it and can tap "I'm in." No points involved.\n\n`+
-  `EVENTS — Quarterly ladder tournaments, socials and other ladder events. Tap Enter or I'm going to sign up, and add events to your Apple or Google calendar.\n\n`+
+  `EVENTS — The Monthly Ladder Mixer (last Friday of each month, 6:30 PM), quarterly ladder tournaments, socials and other ladder events. Tap Enter or I'm going to sign up, and add events to your Apple or Google calendar.\n\n`+
   `PROFILE — Add your phone number and when you usually like to play, so other members can reach you. Your full match history is here too.\n\n`+
   `? BUTTON (top right) — The complete rules and FAQ, any time.`+
   H('Challenges')+
@@ -1051,6 +1057,7 @@ async function adminToggleActive(id,makeActive){
 const EVENT_TYPES={
   tournament:{label:'Ladder Tournament',icon:'🏆',color:'var(--gold)',bg:'rgba(232,184,75,.15)',join:'Enter',joined:'Entered \u2713',who:'entered'},
   social:{label:'Social',icon:'🎉',color:'var(--purple)',bg:'rgba(155,114,240,.15)',join:"I'm going",joined:'Going \u2713',who:'going'},
+  mixer:{label:'Ladder Mixer',icon:'🥂',color:'var(--purple)',bg:'rgba(155,114,240,.15)',join:"I'm in",joined:'In ✓',who:'in'},
   clinic:{label:'Clinic / Drill',icon:'🎾',color:'var(--green)',bg:'rgba(58,170,106,.15)',join:"I'm in",joined:'In \u2713',who:'in'},
   other:{label:'Other',icon:'📌',color:'var(--accent-hi)',bg:'rgba(45,107,228,.15)',join:"I'm going",joined:'Going \u2713',who:'going'}
 };
@@ -1076,6 +1083,14 @@ function icsHref(e){
     'SUMMARY:'+esc2(e.title),'LOCATION:'+esc2(e.location),'DESCRIPTION:'+esc2(e.description),'END:VEVENT','END:VCALENDAR'].filter(Boolean);
   return 'data:text/calendar;charset=utf-8,'+encodeURIComponent(lines.join('\r\n'));
 }
+function money(n){ return '$'+(Number(n)%1?Number(n).toFixed(2):Number(n)); }
+function priceLine(e){
+  const p=e.price, mp=e.memberPrice;
+  if(mp!=null&&mp!==''&&p!=null&&p!=='') return `Ladder members <b>${money(mp)}</b> · Others ${money(p)}`;
+  if(mp!=null&&mp!=='') return `Ladder members <b>${money(mp)}</b>`;
+  if(p!=null&&p!=='') return Number(p)===0?'<b>Free</b>':`<b>${money(p)}</b> per player`;
+  return '';
+}
 function eventCard(e,past){
   const T=EVENT_TYPES[e.type]||EVENT_TYPES.other; const d=parseDay(e.date);
   const rsvps=e.rsvps||[]; const mine=rsvps.includes(state.email); const full=e.capacity&&rsvps.length>=e.capacity&&!mine;
@@ -1088,6 +1103,7 @@ function eventCard(e,past){
         <div class="ev-title">${esc(e.title)}</div>
         <div class="ev-meta">${esc(fmtWhen(e))}${e.location?'<br>'+esc(e.location):''}</div>
         ${e.eligibility?`<div class="ev-meta" style="color:var(--fg)"><b>Who:</b> ${esc(e.eligibility)}</div>`:''}
+        ${priceLine(e)?`<div class="ev-meta" style="color:var(--fg)">💵 ${priceLine(e)}</div>`:''}
       </div>
     </div>
     ${e.description?`<div class="ev-desc">${esc(e.description)}</div>`:''}
@@ -1105,11 +1121,21 @@ function renderEvents(){
   $('eventList').innerHTML=up.length?`<div class="card">${up.map(e=>eventCard(e,false)).join('')}</div>`
     :`<div class="empty"><div class="empty-icon">📅</div><div class="empty-title">No upcoming events yet</div><div class="empty-sub">${state.isAdmin?'Add a social or set up the quarterly tournaments.':'Quarterly tournaments and socials will show up here.'}</div></div>`;
   const hasQ = state.events.some(e=>e.type==='tournament'&&(e.date||'').startsWith('2027'));
-  $('seedBox').hidden=!(state.isAdmin&&!hasQ);
-  if(state.isAdmin&&!hasQ) $('seedBox').innerHTML=`<div class="card" style="padding:14px 16px;border-color:var(--gold)">
+  const hasMixers = state.events.some(e=>e.type==='mixer');
+  const boxes=[];
+  if(state.isAdmin&&!hasMixers){
+    const moved=MIXER_DATES.filter(x=>x[1]&&x[0]>=today()).map(x=>`${fmtShort(dayMs(x[0]))} (${x[1]})`);
+    boxes.push(`<div class="card" style="padding:14px 16px;border-color:var(--purple)">
+      <div style="font-weight:700">🥂 Set up the Monthly Ladder Mixers</div>
+      <div style="font-size:12.5px;color:var(--fg2);margin:4px 0 10px;line-height:1.5">Adds a mixer on the last Friday of every month through December 2027, 6:30–9:00 PM, $10 per player, with sign-up. Holiday clashes move earlier: ${moved.join('; ')}. You can edit or delete any of them afterwards.</div>
+      <button class="btn btn-primary btn-sm" onclick="seedMixers()">Add the mixers</button></div>`);
+  }
+  if(state.isAdmin&&!hasQ) boxes.push(`<div class="card" style="padding:14px 16px;border-color:var(--gold)">
       <div style="font-weight:700">🏆 Set up the 2027 quarterly tournaments</div>
       <div style="font-size:12.5px;color:var(--fg2);margin:4px 0 10px;line-height:1.5">Adds four tournaments: Sat Mar 27, Sat Jun 26, Sat Sep 25 and Sat Dec 18 (moved off Christmas). You can edit any date, time or detail afterwards.</div>
-      <button class="btn btn-primary btn-sm" onclick="seedQuarterlies()">Add all four</button></div>`;
+      <button class="btn btn-primary btn-sm" onclick="seedQuarterlies()">Add all four</button></div>`);
+  $('seedBox').hidden=!boxes.length;
+  $('seedBox').innerHTML=boxes.join('<div style="height:10px"></div>');
   const past=pastEvents();
   $('pastToggle').hidden=!past.length;
   $('pastToggle').textContent=showPast?'Hide past events':`Show past events (${past.length})`;
@@ -1126,7 +1152,7 @@ function renderHomeEvent(){
     <div class="card" style="padding:12px 14px;cursor:pointer;border-left:3px solid ${T.color}" onclick="goPage('Events',$('navEvents'))">
       <div style="display:flex;gap:12px;align-items:center">
         <div class="ev-date" style="background:${T.bg}"><div class="mo" style="color:${T.color}">${MONTHS[d.getMonth()]}</div><div class="dy">${d.getDate()}</div></div>
-        <div style="flex:1;min-width:0"><div class="ev-title">${T.icon} ${esc(e.title)}</div><div class="ev-meta">${esc(fmtWhen(e))}</div>
+        <div style="flex:1;min-width:0"><div class="ev-title">${T.icon} ${esc(e.title)}</div><div class="ev-meta">${esc(fmtWhen(e))}${priceLine(e)?' · '+priceLine(e):''}</div>
           ${going?`<div class="ev-meta" style="color:var(--green);font-weight:600">You\u2019re ${T.who==='entered'?'entered':'going'} \u2713</div>`:''}</div>
         <span style="color:var(--fg2);font-size:20px">\u203a</span>
       </div></div>`;
@@ -1135,7 +1161,7 @@ async function toggleRsvp(id){
   const e=state.events.find(x=>x.id===id); if(!e) return;
   const mine=(e.rsvps||[]).includes(state.email); const T=EVENT_TYPES[e.type]||EVENT_TYPES.other;
   if(!mine&&e.capacity&&(e.rsvps||[]).length>=e.capacity){ toast('Sorry \u2014 this one is full'); return; }
-  try{ await db.collection('events').doc(id).update({rsvps:mine?FieldValue.arrayRemove(state.email):FieldValue.arrayUnion(state.email)}); toast(mine?'Removed':(e.type==='tournament'?'You\u2019re entered! 🏆':'See you there! 🎉')); }
+  try{ await db.collection('events').doc(id).update({rsvps:mine?FieldValue.arrayRemove(state.email):FieldValue.arrayUnion(state.email)}); toast(mine?'Removed':(e.type==='tournament'?'You’re entered! 🏆':e.type==='mixer'?'See you at the mixer! 🎾':'See you there! 🎉')); }
   catch(err){ toast('Could not update: '+err.message); }
 }
 function openEventForm(id){
@@ -1144,7 +1170,7 @@ function openEventForm(id){
   $('sheetName').textContent=e?'Edit event':'New event';
   $('sheetBody').innerHTML=`
     <div class="form-group"><label class="form-label">Type</label>
-      <select id="evType" onchange="$('evEligGroup').hidden=this.value!=='tournament'">
+      <select id="evType" onchange="$('evEligGroup').hidden=this.value!=='tournament'; if(this.value==='mixer'&&!$('evDesc').value){ $('evDesc').value=MIXER_DESC; $('evStart').value='18:30'; $('evEnd').value='21:00'; $('evPrice').value=10; }">
         ${Object.entries(EVENT_TYPES).map(([k,T])=>`<option value="${k}" ${(e?e.type:'social')===k?'selected':''}>${T.icon} ${T.label}</option>`).join('')}
       </select></div>
     <div class="form-group"><label class="form-label">Title</label><input type="text" id="evTitle" value="${v('title')}" placeholder="e.g. Holiday Ladder Mixer"></div>
@@ -1157,6 +1183,10 @@ function openEventForm(id){
     </div>
     <div class="form-group"><label class="form-label">Location</label><input type="text" id="evLoc" value="${e?v('location'):'Gold River Sports Club'}"></div>
     <div class="form-group" id="evEligGroup" ${(e?e.type:'social')==='tournament'?'':'hidden'}><label class="form-label">Who can enter</label><input type="text" id="evElig" value="${v('eligibility')}" placeholder="e.g. Top 8 in each draw as of the Friday before"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Price per player</label><input type="number" id="evPrice" min="0" step="0.01" inputmode="decimal" value="${v('price')}" placeholder="e.g. 20"></div>
+      <div class="form-group"><label class="form-label">Ladder-member price</label><input type="number" id="evMPrice" min="0" step="0.01" inputmode="decimal" value="${v('memberPrice')}" placeholder="Optional, e.g. 15"></div>
+    </div>
     <div class="form-group"><label class="form-label">Details</label><textarea id="evDesc" rows="4" placeholder="Format, food & drinks, what to bring, cost…">${v('description')}</textarea></div>
     <div class="form-row">
       <div class="form-group"><label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-top:22px"><input type="checkbox" id="evRsvp" style="width:auto" ${!e||e.rsvpOn!==false?'checked':''}> Members can sign up</label></div>
@@ -1176,7 +1206,9 @@ async function saveEvent(id){
   const cap=parseInt($('evCap').value,10);
   const data={type:$('evType').value,title:title.slice(0,100),date,start:$('evStart').value||'',end:$('evEnd').value||'',location:$('evLoc').value.trim().slice(0,120),
     eligibility:$('evType').value==='tournament'?$('evElig').value.trim().slice(0,160):'',description:$('evDesc').value.trim().slice(0,1500),
-    rsvpOn:$('evRsvp').checked,capacity:cap>0?cap:null};
+    rsvpOn:$('evRsvp').checked,capacity:cap>0?cap:null,
+    price:$('evPrice').value===''?null:Math.max(0,parseFloat($('evPrice').value)),
+    memberPrice:$('evMPrice').value===''?null:Math.max(0,parseFloat($('evMPrice').value))};
   try{
     if(id) await db.collection('events').doc(id).update(data);
     else await db.collection('events').add({...data,rsvps:[],createdBy:state.email,createdAt:FieldValue.serverTimestamp()});
@@ -1188,6 +1220,28 @@ async function deleteEvent(id){
   if(pendingEventDelete!==id){ pendingEventDelete=id; toast('Tap Delete again to confirm'); setTimeout(()=>{ if(pendingEventDelete===id) pendingEventDelete=null; },4000); return; }
   pendingEventDelete=null;
   try{ await db.collection('events').doc(id).delete(); closeSheet('playerSheet'); toast('Event deleted'); }catch(err){ toast('Could not delete: '+err.message); }
+}
+// Last Friday of each month, 6:30 PM. Holiday clashes move a week (or two) earlier.
+const MIXER_DATES=[
+  ['2026-11-20','moved from Nov 27, the day after Thanksgiving'],
+  ['2026-12-18','moved from Dec 25, Christmas Day'],
+  ['2027-01-29'],['2027-02-26'],['2027-03-26'],['2027-04-30'],['2027-05-28'],['2027-06-25'],
+  ['2027-07-30'],['2027-08-27'],['2027-09-24'],['2027-10-29'],
+  ['2027-11-19','moved from Nov 26, the day after Thanksgiving'],
+  ['2027-12-17','moved from Dec 31, New Year’s Eve']
+];
+const MIXER_DESC='Drop-in point play, food and drinks — come socialize and play. Matches you play can count toward the ladder (just enter the score in the app afterwards), or use the night to hit and practice with other members. All levels welcome; come and go as you like.';
+function mixerTitle(date){ return new Date(date+'T12:00:00').toLocaleDateString('en-US',{month:'long'})+' Ladder Mixer'; }
+async function seedMixers(){
+  const have=new Set(state.events.filter(e=>e.type==='mixer').map(e=>e.date));
+  const todo=MIXER_DATES.filter(([d])=>!have.has(d)&&d>=today());
+  try{
+    for(const [date] of todo){
+      await db.collection('events').add({type:'mixer',title:mixerTitle(date),date,start:'18:30',end:'21:00',location:'Gold River Sports Club',
+        eligibility:'',description:MIXER_DESC,price:10,memberPrice:null,rsvpOn:true,capacity:null,rsvps:[],series:'mixer',createdBy:state.email,createdAt:FieldValue.serverTimestamp()});
+    }
+    toast(`${todo.length} monthly mixers added 🥂`);
+  }catch(err){ toast('Could not add: '+err.message); }
 }
 async function seedQuarterlies(){
   const qs=[['2027-03-27','Q1'],['2027-06-26','Q2'],['2027-09-25','Q3'],['2027-12-18','Q4']];
@@ -1224,6 +1278,7 @@ function renderRules(){
     q('What are the five draws?',`<p>Men’s Singles, Women’s Singles, Men’s Doubles, Women’s Doubles, and Mixed Doubles. You can be in as many as you like. Singles and doubles are split into men’s and women’s draws based on the placement you chose when signing up; Mixed is open to everyone.</p>`),
     q('How are rankings decided?',`<p>Everyone has points in each draw they play. Rankings are simply who has the most points.</p><ul><li>Win a match: <b>+${WIN} points</b></li><li>Lose a match: <b>${LOSS} points</b></li></ul><p>Your starting points come from your level when you join (USTA 2.5 = ${NTRP_BASE['2.5']}, 3.0 = ${NTRP_BASE['3.0']}, 3.5 = ${NTRP_BASE['3.5']}, 4.0 = ${NTRP_BASE['4.0']}, 4.5 = ${NTRP_BASE['4.5']}, 5.0+ = ${NTRP_BASE['5.0']}). Jordan may adjust a starting point if someone is clearly placed too high or low.</p>`),
     q('Can I play without the app?',`<p>Yes. Tell Jordan when you sign up and you'll be added as a 📞 paper player, with no email or smartphone needed. Other members will call or text you to set up matches, and the weekly standings are posted on the bulletin board.</p><p>After a match, fill out a <b>Match Score Card</b> from the front desk, have your opponent initial it, and leave it in Jordan Boyls' box. Jordan enters it, and it counts right away.</p>`),
+    q('What’s a social membership?',`<p>For members who want the people and the events, not the rankings. Social members aren’t ranked, but they get the <b>Practice</b> board to find games, sign-up for the <b>Monthly Ladder Mixer</b> and other socials, and ladder-member pricing. You can switch into a ranked draw any time by asking Jordan.</p>`),
     q('How does doubles ranking work?',`<p>Doubles is ranked individually, so you can play with different partners. When you win, you and your partner each get +${WIN}; the losing pair each get ${LOSS}. The <b>Top Pairings</b> list on each doubles ladder shows which partnerships have the best record together.</p>`),
   ])}
   ${sec('Challenges & matches',[
@@ -1244,6 +1299,7 @@ function renderRules(){
   ${sec('Practice, events & tournaments',[
     q('What’s the Practice tab?',`<p>A place to find hitting partners, with no points involved. Post the days and times you’re free and the kind of session you want; members within your chosen level range see it under <b>Matches My Level</b> and can tap <b>I’m in</b>.</p>`),
     q('When are the quarterly tournaments?',tourneys.length?`<p>${tourneys.map(e=>`<b>${esc(e.title)}</b> — ${esc(fmtWhen(e))}`).join('<br>')}</p><p>Details, eligibility and sign-up are on the <b>Events</b> tab.</p>`:`<p>One at the end of each quarter. Dates, eligibility and sign-up will be posted on the <b>Events</b> tab.</p>`),
+    q('What’s the Monthly Ladder Mixer?',`<p>A drop-in social on the <b>last Friday of every month at 6:30 PM</b>: point play, food and drinks. Matches you play can count toward the ladder (enter the score in the app afterwards), or just use it to hit and meet other members. <b>$10 per player.</b> Sign up on the Events tab so Jordan knows how many to expect.</p>`),
     q('How do I sign up for an event?',`<p>Open the <b>Events</b> tab and tap <b>Enter</b> (tournaments) or <b>I’m going</b> (socials). You can also add it to your Apple or Google calendar from there.</p>`),
   ])}
   ${sec('Fees',[
@@ -1297,6 +1353,41 @@ function printDraw(t,prev,split){
     return `<section class="pv-draw pv-wide">${head}<div class="pv-split">${printTable(t,list.slice(0,h),1,prev)}${printTable(t,list.slice(h),h+1,prev)}</div>${printPairs(t)}</section>`; }
   return `<section class="pv-draw${split?' pv-wide':''}">${head}${printTable(t,list,1,prev)}${printPairs(t)}</section>`;
 }
+// Fun, non-competitive recognition over the last 30 days.
+function funAwards(){
+  const since=Date.now()-30*DAY, recent=state.matches.filter(m=>counts(m)&&dayMs(m.date)>=since);
+  const cnt={}, people={}, weeks={};
+  recent.forEach(m=>{
+    const all=[m.p1,m.p1Partner,m.p2,m.p2Partner].filter(Boolean);
+    const wk=Math.floor((Date.now()-dayMs(m.date))/(7*DAY));
+    all.forEach(id=>{ cnt[id]=(cnt[id]||0)+1; (people[id]=people[id]||new Set()); all.forEach(o=>{ if(o!==id) people[id].add(o); }); (weeks[id]=weeks[id]||new Set()).add(wk); });
+  });
+  const real=id=>getPlayer(id)&&!getPlayer(id).social;
+  const out=[];
+  const most=Object.entries(cnt).filter(([id])=>real(id)).sort((a,b)=>b[1]-a[1]);
+  if(most.length) out.push({key:'most',icon:'🎾',title:'Most Matches',id:most[0][0],detail:`${most[0][1]} match${most[0][1]===1?'':'es'}`,runners:most.slice(1,3).map(([id,n])=>`${displayName(id)} · ${n}`)});
+  const bfly=Object.entries(people).filter(([id])=>real(id)).map(([id,s])=>[id,s.size]).sort((a,b)=>b[1]-a[1]);
+  if(bfly.length&&bfly[0][1]>=2) out.push({key:'butterfly',icon:'🦋',title:'Social Butterfly',id:bfly[0][0],detail:`played with ${bfly[0][1]} different people`,runners:bfly.slice(1,3).map(([id,n])=>`${displayName(id)} · ${n}`)});
+  let best=null;
+  LADDER_ORDER.forEach(t=>{ const prev=ranksAsOf(t,since), now=getRanked(t).map(p=>p.id);
+    now.forEach((id,i)=>{ const w=prev.indexOf(id); if(w<0) return; const gain=w-i; if(gain>0&&(!best||gain>best.gain)) best={id,gain,t,now:i+1}; }); });
+  if(best) out.push({key:'climber',icon:'📈',title:'Biggest Climber',id:best.id,detail:`up ${best.gain} in ${LADDERS[best.t].label} · now #${best.now}`,gain:best.gain,t:best.t,now:best.now});
+  const every=Object.entries(weeks).filter(([id,w])=>real(id)&&[0,1,2,3].every(k=>w.has(k))).map(([id])=>id);
+  if(every.length) out.push({key:'every',icon:'🔥',title:'Every-Week Club',id:every[0],detail:'played every week this month',all:every});
+  return out;
+}
+function renderHomeAwards(){
+  const el=$('homeAwards'); if(!el) return;
+  const aw=funAwards();
+  if(!aw.length){ el.innerHTML=''; return; }
+  el.innerHTML=`<div class="section-head">This month on the ladder</div><div class="card">${aw.map(a=>`
+    <div class="rank-card" style="cursor:pointer" onclick="openPlayerSheet('${esc(a.id)}')">
+      <div style="font-size:24px;width:32px;text-align:center;flex-shrink:0">${a.icon}</div>
+      <div class="rank-info"><div style="font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--fg2)">${a.title}</div>
+        <div class="rank-name">${a.key==='every'&&a.all.length>1?esc(a.all.slice(0,3).map(id=>displayName(id).split(' ')[0]).join(', '))+(a.all.length>3?` +${a.all.length-3} more`:''):esc(displayName(a.id))}</div>
+        <div class="rank-meta">${esc(a.detail)}</div></div>
+    </div>`).join('')}</div>`;
+}
 function printHighlights(){
   const cards=[];
   const ev=upcomingEvents()[0];
@@ -1305,11 +1396,13 @@ function printHighlights(){
   const since=Date.now()-30*DAY, cnt={};
   state.matches.filter(m=>counts(m)&&dayMs(m.date)>=since).forEach(m=>[m.p1,m.p1Partner,m.p2,m.p2Partner].filter(Boolean).forEach(id=>cnt[id]=(cnt[id]||0)+1));
   const top=Object.entries(cnt).filter(([id])=>getPlayer(id)).sort((a,b)=>b[1]-a[1]).slice(0,3);
-  if(top.length) cards.push(`<div><div class="pv-lbl">Most matches · last 30 days</div><div class="pv-big">${esc(displayName(top[0][0]))} · ${top[0][1]}</div><div class="pv-sub">${top.slice(1).map(([id,n])=>`${esc(displayName(id))} · ${n}`).join(' &nbsp;·&nbsp; ')||'&nbsp;'}</div></div>`);
+  if(top.length) cards.push(`<div><div class="pv-lbl">Most matches</div><div class="pv-big">${esc(displayName(top[0][0]))} · ${top[0][1]}</div><div class="pv-sub">${top.slice(1).map(([id,n])=>`${esc(displayName(id))} · ${n}`).join(' &nbsp;·&nbsp; ')||'&nbsp;'}</div></div>`);
   let best=null;
   LADDER_ORDER.forEach(t=>{ const prev=ranksAsOf(t,since), now=getRanked(t).map(p=>p.id);
     now.forEach((id,i)=>{ const w=prev.indexOf(id); if(w<0) return; const gain=w-i; if(gain>0&&(!best||gain>best.gain)) best={id,gain,t,now:i+1}; }); });
-  if(best) cards.push(`<div><div class="pv-lbl">Biggest climber · last 30 days</div><div class="pv-big" style="color:#17713f">▲${best.gain} ${esc(displayName(best.id))}</div><div class="pv-sub">${LADDERS[best.t].label} · now #${best.now}</div></div>`);
+  const fa=funAwards(), bf=fa.find(a=>a.key==='butterfly');
+  if(bf) cards.push(`<div><div class="pv-lbl">🦋 Social butterfly</div><div class="pv-big" style="color:#5b2fc2">${esc(displayName(bf.id))}</div><div class="pv-sub">${esc(bf.detail)}</div></div>`);
+  if(best) cards.push(`<div><div class="pv-lbl">Biggest climber</div><div class="pv-big" style="color:#17713f">▲${best.gain} ${esc(displayName(best.id))}</div><div class="pv-sub">${LADDERS[best.t].label} · now #${best.now}</div></div>`);
   return cards.length?`<div class="pv-hl" style="grid-template-columns:repeat(${cards.length},1fr)">${cards.join('')}</div>`:'';
 }
 // layout: which blocks go on which page. Default is 2 pages; Mixed gets its own page and the highlights
@@ -1322,7 +1415,7 @@ function buildStandings(layout){
   const head=n=>`<header class="pv-header"><div><div class="pv-club">GOLD RIVER SPORTS CLUB</div><h1>Tennis Ladder Standings</h1><div class="pv-asof">As of ${esc(asOf)} · Page ${n} of ${total}</div></div></header>`;
   const foot=`<footer class="pv-footer"><img src="qr-signup.png" alt="">
     <div class="pv-how"><b>How it works:</b> Win +${WIN} · Loss ${LOSS} · Challenge up to 4 spots above you · Play within ${CHALLENGE_DAYS} days · Scores confirmed in the app within ${CONFIRM_HOURS} hours · After ${DECAY_GRACE} days without a match, −${DECAY_POINTS} points a week.<br><b>Not on the ladder yet?</b> Scan the code to sign up. Live standings, challenges and scores are in the ladder app.</div>
-    <div class="pv-key"><span class="pv-up">▲</span> moved up · <span class="pv-dn">▼</span> moved down<br>in the last 7 days · <span class="pv-eq">•</span> new<br><span class="pv-tag pv-new">NEW</span> joined recently</div></footer>`;
+    <div class="pv-key"><span class="pv-up">▲</span> moved up · <span class="pv-dn">▼</span> moved down<br>in the last 7 days · <span class="pv-eq">•</span> new<br>Highlights: last 30 days<br><span class="pv-tag pv-new">NEW</span> joined recently</div></footer>`;
   const page=(n,body)=>`<div class="pv-page">${head(n)}<div class="pv-cols">${body}</div>${foot}</div>`;
   const p1=`${printDraw('ms',prev.ms)}${printDraw('ws',prev.ws)}${layout.highlights?printHighlights():''}`;
   const mx=printDraw('mx',prev.mx,true);
