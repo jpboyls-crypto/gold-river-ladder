@@ -971,7 +971,8 @@ function welcomeEmail(p){
   `• You can challenge anyone up to 4 spots above you in the same draw. New members can challenge anyone in their draw for their first ${OPEN_DAYS/7} weeks${seasonStarted()?'':' — and right now, during the free pre-season, everyone can'}.\n`+
   `• Once a challenge is sent you have ${CHALLENGE_DAYS} days to play it. Text each other to pick a time, then book a court.\n`+
   `• Rained out? Tap 🌧️ Rained out on the challenge to reschedule (adds ${RAIN_DAYS} days, once) or cancel with no penalty.\n`+
-  `• Matches are best of 3 sets, with a 10-point tiebreak in place of a third set.`+
+  `• Matches are best of 3 sets, with a 10-point tiebreak in place of a third set.\n`+
+  `• The challenger brings a new can of balls and the winner keeps them (in doubles, the challenging team brings the can).`+
   H('Scores')+
   `• Either player enters the score on the Play tab (for doubles, pick both partners).\n`+
   `• The other side gets a Confirm / Dispute prompt on their Home screen. Once confirmed the rankings update; if they don't respond, it counts automatically after ${CONFIRM_HOURS} hours.\n`+
@@ -1329,6 +1330,7 @@ function renderRules(){
     q('Can I decline a challenge?',`<p>Yes, if you can’t play — let the challenger know why. Jordan may treat repeated declines as forfeits.</p>`),
     q('How do we book a court?',`<p>Through Club Automation, the same way you always do. Courts can be booked <b>up to 48 hours in advance</b>.</p><p>Tap <b>Book a court</b> on the Play tab, or on an accepted challenge to open the booking page on your proposed date. If that date is more than 48 hours away, agree on the time with your opponent now and book once it opens up.</p>`),
     q('What’s the match format?',`<p>Best of 3 sets, with a 10-point tiebreak in place of a third set.</p>`),
+    q('Who brings the balls?',`<p><b>The challenger brings a new can, and the winner keeps them.</b> In doubles, the challenging team brings the can.</p><p>For a match that isn’t from a challenge, like one played at a mixer, agree on it before you start.</p>`),
     q('How do I record a score?',`<p>Either player goes to <b>Play → Submit Match Score</b> and enters the result. For doubles, pick both partners. The match then shows as <b>Awaiting confirmation</b>.</p>`),
     q('Why hasn’t my score counted yet?',`<p>Every score has to be confirmed by the other side. They’ll see it at the top of their Home screen with <b>Confirm</b> and <b>Dispute</b> buttons. If they don’t respond within <b>${CONFIRM_HOURS} hours</b>, it counts automatically.</p>`),
     q('What if a score is wrong?',`<p>Tap <b>Dispute</b> instead of Confirm. The match won’t count, and Jordan will sort it out with both players. If you entered a score by mistake, message Jordan and he’ll delete it.</p>`),
