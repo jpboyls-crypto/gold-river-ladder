@@ -457,7 +457,7 @@ function renderLadder(){
     <div class="card" style="margin-bottom:16px">${pairs.length?pairs.map((s,i)=>{
       const [a,b]=s.ids.map(getPlayer); if(!a||!b) return '';
       return `<div class="rank-card" style="cursor:default"><div class="rank-num${i<3?' top3':''}">${i+1}</div>
-        <div style="display:flex;margin-right:2px"><div class="avatar" style="width:30px;height:30px;font-size:11px">${esc(a.initials)}</div><div class="avatar" style="width:30px;height:30px;font-size:11px;margin-left:-8px;box-shadow:0 0 0 2px var(--surface)">${esc(b.initials)}</div></div>
+        <div style="display:flex;margin-right:2px"><div class="avatar" style="width:30px;height:30px;font-size:11px;letter-spacing:-.3px">${esc(a.initials)}</div><div class="avatar" style="width:30px;height:30px;font-size:11px;letter-spacing:-.3px;margin-left:-3px;position:relative;box-shadow:0 0 0 2px var(--surface)">${esc(b.initials)}</div></div>
         <div class="rank-info"><div class="rank-name">${esc(a.name.split(' ')[0])} &amp; ${esc(b.name.split(' ')[0])}</div><div class="rank-meta">${s.played} match${s.played===1?'':'es'} together</div></div>
         <div style="text-align:right"><div class="rank-rating" style="color:${color}">${s.wins}–${s.losses}</div><div style="font-size:11px;color:var(--fg2)">${Math.round(s.pct*100)}% win</div></div></div>`;
     }).join(''):`<div class="empty" style="padding:18px"><div class="empty-sub">Pairings appear once doubles scores are submitted with partners.</div></div>`}</div>
