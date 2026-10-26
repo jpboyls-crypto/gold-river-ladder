@@ -664,7 +664,10 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
 <!-- ADMIN -->
 <div class="page" id="pageAdmin">
   <div class="pad" style="padding-top:16px">
-    <button class="btn btn-secondary btn-full" style="margin-bottom:14px" onclick="openPrintStandings()">🖨️ Print standings</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+      <button class="btn btn-secondary" onclick="openAdminScore()">✍️ Enter a score</button>
+      <button class="btn btn-secondary" onclick="openPrintStandings()">🖨️ Print standings</button>
+    </div>
     <div class="tabs" id="adminTabs">
       <div class="tab active" onclick="switchAdmin('signups',this)">Sign-ups<span class="badge-count" id="signupCount" hidden>0</span></div>
       <div class="tab" onclick="switchAdmin('players',this)">Players</div>
@@ -697,9 +700,14 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
           <label class="form-label">Full Name</label>
           <input type="text" id="addName" placeholder="e.g. Sarah Mitchell">
         </div>
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-size:14px;margin-bottom:12px;line-height:1.4">
+          <input type="checkbox" id="addPaper" onchange="togglePaperForm()" style="width:auto;margin-top:3px">
+          <span><b>Paper player</b> — plays without the app. No email needed.</span>
+        </label>
+        <div id="addPaperNote" hidden style="font-size:12.5px;line-height:1.5;color:var(--fg2);background:var(--surface2);border-radius:8px;padding:10px 12px;margin:-4px 0 12px">They'll appear on the ladder with a 📞 so members know to call or text them. Add a phone number. Their scores come in on paper score cards — enter them with <b>✍️ Enter a score</b>.</div>
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">Email (their login)</label>
+            <label class="form-label" id="addEmailLabel">Email (their login)</label>
             <input type="email" id="addEmail" inputmode="email" placeholder="sarah@example.com">
           </div>
           <div class="form-group">
@@ -819,6 +827,6 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
 <!-- TOAST -->
 <div id="toast" style="position:fixed;bottom:calc(72px + env(safe-area-inset-bottom,0px) + 12px);left:50%;transform:translateX(-50%) translateY(10px);background:#222b3d;color:#fff;padding:10px 20px;border-radius:30px;font-size:14px;font-weight:600;z-index:500;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;white-space:nowrap"></div>
 
-<script src="app.js?v=20261025m"></script>
+<script src="app.js?v=20261025n"></script>
 </body>
 </html>

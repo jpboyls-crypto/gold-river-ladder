@@ -209,6 +209,7 @@ function rerender(){
 // ═══════════════════════════════════════════
 //  DATA HELPERS (ratings derived from matches)
 // ═══════════════════════════════════════════
+function isPaper(p){ return !!(p&&p.paper); }
 function getPlayer(id){ return state.players.find(p=>p.id===id) }
 function me(){ return getPlayer(state.email) }
 function displayName(id){ const p=getPlayer(id); return p?p.name:(id||'Unknown'); }
@@ -469,7 +470,7 @@ function renderLadder(){
     return `<div class="rank-card" onclick="openPlayerSheet('${esc(p.id)}')" style="${isMe?'background:rgba(45,107,228,.07);border-left:3px solid var(--accent);':''}">
       <div class="rank-num${rank<=3?' top3':''}">${rank}</div><div class="avatar">${esc(p.initials)}</div>
       <div class="rank-info"><div class="rank-name">${esc(p.name)}${isMe?' <span style="font-size:11px;color:var(--accent-hi)">(you)</span>':''}</div>
-        <div class="rank-meta">${isNewMember(p)&&seasonStarted()?'<span class="chip chip-green" style="padding:1px 6px;font-size:10px">NEW</span> ':''}${decayPenalty(p)?`<span class="chip chip-red" style="padding:1px 6px;font-size:10px">\u2212${decayPenalty(p)} idle</span> `:''}NTRP ${esc(p.ntrp)} · ${rec.w}W ${rec.l}L${showUTR&&utr?` · <span class="utr-badge" style="vertical-align:middle"><span class="utr-label">UTR</span>${Number(utr).toFixed(2)}</span>`:''}</div></div>
+        <div class="rank-meta">${isPaper(p)?'<span title="Plays without the app" style="font-size:11px">📞</span> ':''}${isNewMember(p)&&seasonStarted()?'<span class="chip chip-green" style="padding:1px 6px;font-size:10px">NEW</span> ':''}${decayPenalty(p)?`<span class="chip chip-red" style="padding:1px 6px;font-size:10px">\u2212${decayPenalty(p)} idle</span> `:''}NTRP ${esc(p.ntrp)} · ${rec.w}W ${rec.l}L${showUTR&&utr?` · <span class="utr-badge" style="vertical-align:middle"><span class="utr-label">UTR</span>${Number(utr).toFixed(2)}</span>`:''}</div></div>
       <div style="text-align:right"><div class="rank-rating" style="color:${color}">${rating}</div><div style="font-size:11px;color:var(--fg2)">pts</div></div></div>`;
   }).join('')}</div>`;
 }
@@ -490,8 +491,9 @@ function openPlayerSheet(id){
   const digits=(p.phone||'').replace(/\D/g,'');
   const contact=!isMe?`<div class="card" style="padding:12px 14px;margin-bottom:14px">
       <div style="font-size:10px;color:var(--fg2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Contact</div>
+      ${isPaper(p)?`<div style="font-size:13px;line-height:1.5;margin-bottom:8px;padding:8px 10px;border-radius:8px;background:rgba(232,184,75,.14)">📞 <b>${esc(p.name.split(' ')[0])} plays without the app.</b> Call or text to set up a match. Either of you can turn in a paper score card, or you can enter the score in the app.</div>`:''}
       ${p.phone?`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px"><span style="user-select:all">${esc(p.phone)}</span><span style="display:flex;gap:6px"><a class="btn btn-secondary btn-sm" href="sms:${digits}">Text</a><a class="btn btn-secondary btn-sm" href="tel:${digits}">Call</a></span></div>`:''}
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="user-select:all;font-size:13px;overflow:hidden;text-overflow:ellipsis">${esc(p.email)}</span><a class="btn btn-secondary btn-sm" href="mailto:${esc(p.email)}">Email</a></div>
+      ${p.email?`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="user-select:all;font-size:13px;overflow:hidden;text-overflow:ellipsis">${esc(p.email)}</span><a class="btn btn-secondary btn-sm" href="mailto:${esc(p.email)}">Email</a></div>`:''}
       ${p.availability?`<div style="font-size:12.5px;color:var(--fg2);margin-top:8px">Usually free: ${esc(p.availability)}</div>`:''}
     </div>`:'';
   $('sheetBody').innerHTML=`
@@ -502,7 +504,8 @@ function openPlayerSheet(id){
     </div>
     ${ratingBlocks.length?`<div style="display:grid;grid-template-columns:repeat(${Math.min(3,ratingBlocks.length)},1fr);gap:8px;margin-bottom:16px">${ratingBlocks.join('')}</div>`:''}
     ${contact}
-    ${!isMe&&m?`<button class="btn btn-primary btn-full" style="margin-bottom:16px" onclick="closeSheet('playerSheet');goPage('Challenge',$('navChallenge'))">Challenge ${esc(p.name.split(' ')[0])}</button>`:''}
+    ${!isMe&&m&&!isPaper(p)?`<button class="btn btn-primary btn-full" style="margin-bottom:16px" onclick="closeSheet('playerSheet');goPage('Challenge',$('navChallenge'))">Challenge ${esc(p.name.split(' ')[0])}</button>`:''}
+    ${!isMe&&m&&isPaper(p)&&p.phone?`<a class="btn btn-primary btn-full" style="margin-bottom:16px" href="tel:${digits}">📞 Call ${esc(p.name.split(' ')[0])} to set up a match</a>`:''}
     ${pMatches.length?`<div class="section-head" style="padding-top:0">Recent Matches</div><div class="card">${pMatches.map(match=>{const won=wonBy(match,id);
       return `<div class="match-card" style="border-bottom:1px solid var(--border)"><div style="display:flex;align-items:center;justify-content:space-between"><div><div style="font-weight:600;font-size:14px">${matchLine(match,id)}</div><div style="font-size:12px;color:var(--fg2)">${esc(ladderLabel(match.ladder))} · ${esc(match.date)}</div></div><span class="score-pill ${won?'w':'l'}">${won?'W':'L'} ${esc(match.score)}</span></div></div>`;}).join('')}</div>`:''}
     ${state.isAdmin?`<div class="divider"></div>
@@ -526,7 +529,7 @@ function openPlayerSheet(id){
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-primary btn-sm" onclick="adminSavePlayer('${esc(id)}')">Save</button>
           <button class="btn ${p.active===false?'btn-green':'btn-danger'} btn-sm" onclick="adminToggleActive('${esc(id)}',${p.active===false})">${p.active===false?'Reactivate':'Mark Inactive'}</button>
-          <button class="btn btn-secondary btn-sm" onclick="openWelcome('${esc(id)}')">Send welcome</button>
+          ${isPaper(p)?'':`<button class="btn btn-secondary btn-sm" onclick="openWelcome('${esc(id)}')">Send welcome</button>`}
           <button class="btn btn-secondary btn-sm" style="color:var(--red)" onclick="adminDeletePlayer('${esc(id)}')">Delete player</button>
         </div>
         <div style="font-size:11.5px;color:var(--fg2);margin-top:8px;line-height:1.4">Mark Inactive hides them from the draws but keeps their history. Delete removes the player record entirely (their past matches stay on the record under their email).</div>
@@ -555,11 +558,13 @@ function populateOpponentsFor(ladder,selectId){
   if(!ladder||!LADDERS[ladder]){ sel.innerHTML=`<option value="">—</option>`; return; }
   const ranked=getRanked(ladder), myRank=ranked.findIndex(p=>p.id===state.email);
   const m=me(); const open=m&&inOpenWindow(m);
-  const challengeable=open?ranked.filter(p=>p.id!==state.email):(myRank>0?ranked.filter((p,i)=>i<myRank).slice(-4):[]);
+  const eligible=open?ranked.filter(p=>p.id!==state.email):(myRank>0?ranked.filter((p,i)=>i<myRank).slice(-4):[]);
+  const challengeable=eligible.filter(p=>!isPaper(p)), paperOnes=eligible.filter(isPaper);
   const note=$('chlNote');
   if(note&&selectId==='chlOpponent') note.innerHTML=open
     ?`<div style="font-size:12.5px;line-height:1.5;padding:10px 12px;border-radius:8px;background:rgba(58,170,106,.12);color:var(--fg);margin-bottom:14px">🟢 <b>Open challenges until ${fmtShort(openUntilMs(m))}.</b> ${seasonStarted()?'As a new member':'During the pre-season and the first 3 weeks of the season'} you can challenge anyone in your draw. After that it\u2019s up to 4 spots above you.</div>`
     :`<div style="font-size:12.5px;color:var(--fg2);margin-bottom:14px">You can challenge anyone up to 4 spots above you. They have ${CHALLENGE_DAYS} days to play.</div>`;
+  if(note&&selectId==='chlOpponent'&&paperOnes.length) note.innerHTML+=`<div style="font-size:12.5px;line-height:1.5;margin:-6px 0 14px;color:var(--fg2)">📞 Also eligible, but they play without the app — call to set up a match: ${paperOnes.map(p=>`<b style="color:var(--fg)">${esc(p.name)}</b>${p.phone?` <a href="tel:${esc(p.phone.replace(/\D/g,''))}">${esc(p.phone)}</a>`:''}`).join(' · ')}</div>`;
   sel.innerHTML=challengeable.length?challengeable.map(p=>`<option value="${esc(p.id)}">${esc(p.name)} (#${ranked.indexOf(p)+1})</option>`).join(''):`<option value="">${myRank===0?'You’re #1 — nobody above you!':'No eligible opponents above you'}</option>`;
   if([...sel.options].some(o=>o.value===keep)) sel.value=keep;
 }
@@ -780,7 +785,7 @@ function renderAdminPlayers(filter=''){
         <div class="avatar" style="width:34px;height:34px;font-size:13px">${esc(p.initials)}</div>
         <div style="flex:1;min-width:0">
           <div style="font-weight:600;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.name)}</div>
-          <div style="font-size:12px;color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">NTRP ${esc(p.ntrp)} \u00b7 ${p.gender==='F'?"Women's":"Men's"} \u00b7 ${esc(p.email)}</div>
+          <div style="font-size:12px;color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">NTRP ${esc(p.ntrp)} \u00b7 ${p.gender==='F'?"Women's":"Men's"} \u00b7 ${isPaper(p)?'📞 paper player'+(p.phone?' \u00b7 '+esc(p.phone):''):esc(p.email)}</div>
         </div>
         <span class="chip ${p.active!==false?'chip-green':'chip-red'}">${p.active!==false?'Active':'Inactive'}</span>
         <span style="color:var(--fg2);font-size:20px;line-height:1">\u203a</span>
@@ -832,23 +837,35 @@ async function deleteMatch(id){
   try{ await db.collection('matches').doc(id).delete(); toast('Match deleted — ratings recalculated'); }catch(e){ toast('Could not delete: '+e.message); }
 }
 async function addPlayer(){
-  const name=$('addName').value.trim(), email=norm($('addEmail').value);
+  const name=$('addName').value.trim(), paper=$('addPaper').checked;
+  let email=norm($('addEmail').value);
   if(!name){ toast('Please enter a name'); return; }
-  if(!/^\S+@\S+\.\S+$/.test(email)){ toast('Please enter a valid email — it’s their login'); return; }
+  if(paper){
+    if(!$('addPhone').value.trim()){ toast('Add a phone number so members can call them'); return; }
+    if(email&&!/^\S+@\S+\.\S+$/.test(email)){ toast('That email doesn’t look right (or leave it blank)'); return; }
+  } else if(!/^\S+@\S+\.\S+$/.test(email)){ toast('Please enter a valid email — it’s their login'); return; }
+  // paper players get a placeholder ID instead of an email login
+  const id = paper ? 'paper-'+name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')+'-'+Math.random().toString(36).slice(2,6) : email;
   const ntrp=$('addNTRP').value, base=NTRP_BASE[ntrp]||1200;
   const singles=$('addSingles').checked, doubles=$('addDoubles').checked, mixed=$('addMixed').checked;
   if(!singles&&!doubles&&!mixed){ toast('Enroll in at least one ladder'); return; }
-  if(getPlayer(email)){ toast('That email is already on the ladder'); return; }
+  if(!paper&&getPlayer(email)){ toast('That email is already on the ladder'); return; }
   try{
-    await db.collection('players').doc(email).set({
-      name,initials:initialsOf(name),email,phone:$('addPhone').value.trim(),ntrp,gender:$('addGender').value,membership:$('addMembership').value,
+    await db.collection('players').doc(id).set({
+      name,initials:initialsOf(name),email:paper?(email||''):email,paper,phone:$('addPhone').value.trim(),ntrp,gender:$('addGender').value,membership:$('addMembership').value,
       utrSingles:parseFloat($('addUTRS').value)||null,utrDoubles:parseFloat($('addUTRD').value)||null,
       singles,doubles,mixed,active:true,baseSingles:base,baseDoubles:base,baseMixed:base,billingStart:'2027-01-01',availability:'',createdAt:FieldValue.serverTimestamp(),approvedBy:state.email
     });
-    ['addName','addEmail','addPhone','addUTRS','addUTRD'].forEach(id=>$(id).value='');
-    toast(`${name} added to the ladder ✓`);
-    setTimeout(()=>openWelcome(email),350);
+    ['addName','addEmail','addPhone','addUTRS','addUTRD'].forEach(x=>$(x).value='');
+    $('addPaper').checked=false; togglePaperForm();
+    if(paper){ toast(`${name} added as a paper player ✓`); }
+    else { toast(`${name} added to the ladder ✓`); setTimeout(()=>openWelcome(email),350); }
   }catch(e){ toast('Could not add: '+e.message); }
+}
+function togglePaperForm(){
+  const on=$('addPaper').checked;
+  $('addEmailLabel').textContent=on?'Email (optional)':'Email (their login)';
+  $('addPaperNote').hidden=!on;
 }
 async function adminSavePlayer(id){
   const num=v=>{ const n=parseFloat(v); return isNaN(n)?null:n; };
@@ -951,6 +968,66 @@ async function copyWelcome(btn,which){
   const el=$(which||'welcomeMail'); const t=el.textContent;
   try{ await navigator.clipboard.writeText(t); btn.textContent='Copied \u2713'; }
   catch(e){ const r=document.createRange(); r.selectNodeContents(el); const s=getSelection(); s.removeAllRanges(); s.addRange(r); btn.textContent='Selected \u2014 tap Copy'; }
+}
+// ── admin: enter a score for any players (e.g. from a paper score card) ──
+function openAdminScore(){
+  $('sheetName').textContent='Enter a score';
+  const drawOpts=LADDER_ORDER.map(t=>`<option value="${t}">${LADDERS[t].label}</option>`).join('');
+  $('sheetBody').innerHTML=`
+    <div style="font-size:13px;color:var(--fg2);line-height:1.5;margin-bottom:12px">For paper score cards or results reported to you. Scores you enter count right away — no confirmation step.</div>
+    <div class="form-group"><label class="form-label">Draw</label><select id="asDraw" onchange="asFill()">${drawOpts}</select></div>
+    <div class="card" style="padding:12px;margin-bottom:12px">
+      <div class="form-label" style="margin-bottom:8px">Side 1</div>
+      <div class="form-group" style="margin-bottom:8px"><select id="asA1" onchange="asFill(this)"></select></div>
+      <div class="form-group as-dbl" style="margin-bottom:0"><select id="asA2" onchange="asFill(this)"></select></div>
+    </div>
+    <div class="card" style="padding:12px;margin-bottom:12px">
+      <div class="form-label" style="margin-bottom:8px">Side 2</div>
+      <div class="form-group" style="margin-bottom:8px"><select id="asB1" onchange="asFill(this)"></select></div>
+      <div class="form-group as-dbl" style="margin-bottom:0"><select id="asB2" onchange="asFill(this)"></select></div>
+    </div>
+    <div class="form-group"><label class="form-label">Winner</label>
+      <div class="theme-seg" id="asWin"><button type="button" data-w="1" class="on" onclick="asWinner(1)">Side 1</button><button type="button" data-w="2" onclick="asWinner(2)">Side 2</button></div></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Score</label><input type="text" id="asScore" placeholder="6-3, 7-5"></div>
+      <div class="form-group"><label class="form-label">Date played</label><input type="date" id="asDate" value="${today()}"></div>
+    </div>
+    <button class="btn btn-green btn-full" onclick="saveAdminScore()">Save score</button>`;
+  $('playerSheet').classList.add('open');
+  asFill();
+}
+let asWin=1;
+function asWinner(w){ asWin=w; document.querySelectorAll('#asWin button').forEach(b=>b.classList.toggle('on',+b.dataset.w===w)); }
+// fill the four selects so nobody can appear twice; keep existing picks where possible
+function asFill(){
+  const t=$('asDraw').value, dbl=isDoubles(t), ranked=getRanked(t);
+  document.querySelectorAll('.as-dbl').forEach(el=>el.hidden=!dbl);
+  const ids=dbl?['asA1','asA2','asB1','asB2']:['asA1','asB1'];
+  const ph={asA1:'Player',asA2:'Partner',asB1:'Player',asB2:'Partner'};
+  const picked={}; ids.forEach(id=>picked[id]=$(id).value);
+  ids.forEach(id=>{
+    const taken=ids.filter(o=>o!==id).map(o=>picked[o]).filter(Boolean);
+    const opts=ranked.filter(p=>!taken.includes(p.id));
+    $(id).innerHTML=`<option value="">${ph[id]}…</option>`+opts.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}${isPaper(p)?' 📞':''} (#${ranked.indexOf(p)+1})</option>`).join('');
+    if(opts.some(p=>p.id===picked[id])) $(id).value=picked[id];
+  });
+}
+async function saveAdminScore(){
+  const t=$('asDraw').value, dbl=isDoubles(t);
+  const a1=$('asA1').value, b1=$('asB1').value, a2=dbl?$('asA2').value:null, b2=dbl?$('asB2').value:null;
+  const score=$('asScore').value.trim(), date=$('asDate').value;
+  if(!a1||!b1||(dbl&&(!a2||!b2))){ toast(dbl?'Pick all four players':'Pick both players'); return; }
+  if(!score){ toast('Enter the score'); return; }
+  if(!date){ toast('Enter the date played'); return; }
+  const winner=asWin===1?a1:b1;
+  try{
+    await db.collection('matches').add({p1:a1,p1Partner:a2,p2:b1,p2Partner:b2,ladder:t,score:score.slice(0,40),winner,date,
+      submittedBy:state.email,enteredByAdmin:true,status:'confirmed',createdAt:FieldValue.serverTimestamp()});
+    state.challenges.filter(c=>isOpenChallenge(c)&&c.ladder===t&&((c.from===a1&&c.to===b1)||(c.from===b1&&c.to===a1)))
+      .forEach(c=>db.collection('challenges').doc(c.id).update({status:'played'}).catch(()=>{}));
+    toast(`Saved — ${displayName(winner).split(' ')[0]}${dbl?' & '+displayName(asWin===1?a2:b2).split(' ')[0]:''} win ${score}`);
+    $('asScore').value=''; ['asA1','asA2','asB1','asB2'].forEach(id=>{ if($(id)) $(id).value=''; }); asWinner(1); asFill();
+  }catch(e){ toast('Could not save: '+e.message); }
 }
 let pendingPlayerDelete=null;
 async function adminDeletePlayer(id){
