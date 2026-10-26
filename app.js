@@ -183,7 +183,8 @@ function startListeners(){
   unsubs.push(db.collection(COL('matches')).orderBy('date','desc').onSnapshot(s=>{ state.matches=s.docs.map(d=>({id:d.id,...d.data()})); state.ready.matches=true; afterData(); }, onErr('matches')));
   unsubs.push(db.collection(COL('challenges')).onSnapshot(s=>{ state.challenges=s.docs.map(d=>({id:d.id,...d.data()})); state.ready.challenges=true; afterData(); }, onErr('challenges')));
   unsubs.push(db.collection(COL('events')).onSnapshot(s=>{ state.events=s.docs.map(d=>({id:d.id,...d.data()})); if(booted) rerender(); }, e=>{ console.warn('events unavailable', e); }));
-  unsubs.push(db.collection(COL('hits')).onSnapshot(s=>{ state.hits=s.docs.map(d=>({id:d.id,...d.data()})); state.ready.hits=true; afterData(); }, onErr('hits')));
+  if(JR) state.ready.hits=true;   // no Practice board in the junior app (and no jr_hits rules)
+  else unsubs.push(db.collection(COL('hits')).onSnapshot(s=>{ state.hits=s.docs.map(d=>({id:d.id,...d.data()})); state.ready.hits=true; afterData(); }, onErr('hits')));
   if(state.isAdmin){
     unsubs.push(db.collection(COL('signups')).onSnapshot(s=>{ state.signups=s.docs.map(d=>({id:d.id,...d.data()})); renderSignupBadge(); if(currentPage==='Admin') renderAdmin(); }, onErr('signups')));
   }
