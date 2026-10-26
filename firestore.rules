@@ -91,6 +91,79 @@ service cloud.firestore {
       allow read, update, delete: if isAdmin();
     }
 
+    // ════════════════ JUNIOR LADDER (jr_ collections) ════════════════
+    // Parents sign in. jr_families/{parent email}.kids lists the players they manage (kept up to date by the app).
+    // Adult members can't read junior data, and junior parents can't read adult data.
+    function jrAdmin()    { return isAdmin() || (signedIn() && email() in []); }   // add the Junior Coordinator here too
+    function jrFamily()   { return /databases/$(database)/documents/jr_families/$(email()); }
+    function isJrParent() { return signedIn() && exists(jrFamily()); }
+    function myKids()     { return get(jrFamily()).data.kids; }
+    function myKid(id)    { return isJrParent() && id in myKids(); }
+    function jrRead()     { return isJrParent() || jrAdmin(); }
+
+    match /jr_families/{fid} {
+      allow read: if jrAdmin() || (signedIn() && fid == email());
+      allow write: if jrAdmin();
+    }
+    match /jr_players/{pid} {
+      allow read: if jrRead();
+      allow create, delete: if jrAdmin();
+      allow update: if jrAdmin() || (myKid(pid) && onlyKeys(['phone', 'availability']));
+    }
+    match /jr_matches/{mid} {
+      allow read: if jrRead();
+      allow create: if jrAdmin()
+                    || (myKid(request.resource.data.submittedBy)
+                        && request.resource.data.submittedBy in [request.resource.data.p1, request.resource.data.p2,
+                                                                  request.resource.data.p1Partner, request.resource.data.p2Partner]
+                        && request.resource.data.winner in [request.resource.data.p1, request.resource.data.p2]
+                        && request.resource.data.ladder in ['o10', 'g12', 'b14', 'g14', 'b16', 'g16', 'b18', 'g18', 'jd']
+                        && request.resource.data.score is string && request.resource.data.score.size() <= 40
+                        && request.resource.data.status == 'pending');
+      // a parent of a player on the other side may confirm or dispute a pending score, once
+      allow update: if jrAdmin()
+                    || (isJrParent() && resource.data.status == 'pending'
+                        && myKid(request.resource.data.confirmedBy)
+                        && ((resource.data.submittedBy in [resource.data.p1, resource.data.p1Partner]
+                             && request.resource.data.confirmedBy in [resource.data.p2, resource.data.p2Partner])
+                            || (resource.data.submittedBy in [resource.data.p2, resource.data.p2Partner]
+                             && request.resource.data.confirmedBy in [resource.data.p1, resource.data.p1Partner]))
+                        && request.resource.data.status in ['confirmed', 'disputed']
+                        && onlyKeys(['status', 'confirmedBy', 'confirmedAt']));
+      allow delete: if jrAdmin();
+    }
+    match /jr_challenges/{cid} {
+      allow read: if jrRead();
+      allow create: if myKid(request.resource.data.from) && request.resource.data.status == 'pending';
+      allow update: if jrAdmin()
+                    || ((myKid(resource.data.to) || myKid(resource.data.from))
+                        && (onlyKeys(['status', 'respondedAt', 'rainBy', 'rainAt'])
+                            || (onlyKeys(['rainedOut', 'rainBy', 'rainAt', 'playBy', 'date'])
+                                && resource.data.get('rainedOut', false) != true
+                                && request.resource.data.rainedOut == true
+                                && myKid(request.resource.data.rainBy)
+                                && request.resource.data.playBy is int
+                                && request.resource.data.playBy <= request.time.toMillis() + 15 * 86400000)));
+      allow delete: if jrAdmin() || myKid(resource.data.from);
+    }
+    match /jr_events/{eid} {
+      allow read: if jrRead();
+      allow create, delete: if jrAdmin();
+      // a parent may only add or remove their own children from the sign-up list
+      allow update: if jrAdmin()
+                    || (isJrParent() && onlyKeys(['rsvps'])
+                        && request.resource.data.rsvps.toSet().difference(resource.data.rsvps.toSet()).union(
+                             resource.data.rsvps.toSet().difference(request.resource.data.rsvps.toSet())).hasOnly(myKids()));
+    }
+    match /jr_signups/{sid} {
+      allow create: if request.resource.data.keys().hasAll(['name', 'email', 'status'])
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.name is string && request.resource.data.name.size() <= 80
+                    && request.resource.data.email is string && request.resource.data.email.size() <= 120
+                    && request.resource.data.size() <= 24;
+      allow read, update, delete: if jrAdmin();
+    }
+
     match /{document=**} { allow read, write: if false; }
   }
 }

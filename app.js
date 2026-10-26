@@ -18,6 +18,15 @@ const auth = firebase.auth();
 const db   = firebase.firestore();
 const FieldValue = firebase.firestore.FieldValue;
 
+// ── adult or junior ladder? junior/index.html sets window.LADDER_MODE='junior' before loading this file.
+// Same code, separate data: junior collections start with jr_, and parents sign in on behalf of their kids.
+const JR = window.LADDER_MODE==='junior';
+const COL = n => JR ? 'jr_'+n : n;
+const LADDER_NAME = JR ? 'Gold River Junior Tennis Ladder' : 'Gold River Tennis Ladder';
+const SEASON_YEAR = 2027;            // junior age groups use the player's age in this year
+// Extra admins for the junior app only (e.g. the Junior Coordinator). Must match jrAdmin() in firestore.rules.
+const JR_ADMIN_EMAILS = [];
+
 // Rating deltas — symmetric: every winner gets +WIN, every loser gets LOSS
 const WIN = 18, LOSS = -12;
 // ── ladder rules ──
@@ -43,7 +52,9 @@ const NTRP_BASE = {'2.5':1000,'3.0':1100,'3.5':1200,'4.0':1400,'4.5':1600,'5.0':
 // ── live state (filled by Firestore listeners) ──
 let state = {
   user: null,          // firebase user
-  email: null,         // lowercased
+  email: null,         // lowercased; the player id the app acts as (junior: the selected child)
+  authEmail: null,     // the signed-in email (junior: the parent)
+  kids: [],            // junior: this parent's children
   isAdmin: false,
   players: [],         // player docs, id = email
   matches: [],
@@ -69,6 +80,7 @@ function showAuth(which){
   ['authLoading','authLogin','authNotMember'].forEach(id => $(id).hidden = id!==which);
   $('appMain').hidden = which!==null;
   $('bottomNav').hidden = which!==null;
+  const kb=$('kidBar'); if(kb) kb.hidden = which!==null || !(state.kids||[]).length;
 }
 async function sendLink(){
   const email = norm($('loginEmail').value);
@@ -128,8 +140,9 @@ async function signInWithPasted(){
 function signOut(){ stopListeners(); auth.signOut(); }
 
 auth.onAuthStateChanged(async user => {
-  if(!user){ state.user=null; state.email=null; state.isAdmin=false; stopListeners(); showAuth('authLogin'); return; }
-  state.user = user; state.email = norm(user.email); state.isAdmin = ADMIN_EMAILS.includes(state.email);
+  if(!user){ state.user=null; state.email=null; state.authEmail=null; state.kids=[]; state.isAdmin=false; stopListeners(); showAuth('authLogin'); return; }
+  state.user = user; state.authEmail = norm(user.email); state.email = state.authEmail;
+  state.isAdmin = ADMIN_EMAILS.includes(state.authEmail) || (JR && JR_ADMIN_EMAILS.includes(state.authEmail));
   showAuth('authLoading');
   startListeners();
 });
@@ -166,19 +179,47 @@ function stopListeners(){ unsubs.forEach(u=>u()); unsubs=[]; state.players=[];st
 function startListeners(){
   stopListeners();
   const onErr = name => e => { console.error(name, e); if(e.code==='permission-denied'){ onNotMember(); } };
-  unsubs.push(db.collection('players').onSnapshot(s=>{ state.players=s.docs.map(d=>({id:d.id,...d.data()})); state.ready.players=true; afterData(); }, onErr('players')));
-  unsubs.push(db.collection('matches').orderBy('date','desc').onSnapshot(s=>{ state.matches=s.docs.map(d=>({id:d.id,...d.data()})); state.ready.matches=true; afterData(); }, onErr('matches')));
-  unsubs.push(db.collection('challenges').onSnapshot(s=>{ state.challenges=s.docs.map(d=>({id:d.id,...d.data()})); state.ready.challenges=true; afterData(); }, onErr('challenges')));
-  unsubs.push(db.collection('events').onSnapshot(s=>{ state.events=s.docs.map(d=>({id:d.id,...d.data()})); if(booted) rerender(); }, e=>{ console.warn('events unavailable', e); }));
-  unsubs.push(db.collection('hits').onSnapshot(s=>{ state.hits=s.docs.map(d=>({id:d.id,...d.data()})); state.ready.hits=true; afterData(); }, onErr('hits')));
+  unsubs.push(db.collection(COL('players')).onSnapshot(s=>{ state.players=s.docs.map(d=>({id:d.id,...d.data()})); state.ready.players=true; afterData(); }, onErr('players')));
+  unsubs.push(db.collection(COL('matches')).orderBy('date','desc').onSnapshot(s=>{ state.matches=s.docs.map(d=>({id:d.id,...d.data()})); state.ready.matches=true; afterData(); }, onErr('matches')));
+  unsubs.push(db.collection(COL('challenges')).onSnapshot(s=>{ state.challenges=s.docs.map(d=>({id:d.id,...d.data()})); state.ready.challenges=true; afterData(); }, onErr('challenges')));
+  unsubs.push(db.collection(COL('events')).onSnapshot(s=>{ state.events=s.docs.map(d=>({id:d.id,...d.data()})); if(booted) rerender(); }, e=>{ console.warn('events unavailable', e); }));
+  unsubs.push(db.collection(COL('hits')).onSnapshot(s=>{ state.hits=s.docs.map(d=>({id:d.id,...d.data()})); state.ready.hits=true; afterData(); }, onErr('hits')));
   if(state.isAdmin){
-    unsubs.push(db.collection('signups').onSnapshot(s=>{ state.signups=s.docs.map(d=>({id:d.id,...d.data()})); renderSignupBadge(); if(currentPage==='Admin') renderAdmin(); }, onErr('signups')));
+    unsubs.push(db.collection(COL('signups')).onSnapshot(s=>{ state.signups=s.docs.map(d=>({id:d.id,...d.data()})); renderSignupBadge(); if(currentPage==='Admin') renderAdmin(); }, onErr('signups')));
   }
 }
 let booted=false, currentPage='Home';
-function onNotMember(){ stopListeners(); showAuth('authNotMember'); $('notMemberText').innerHTML = `<b>${esc(state.email)}</b> isn’t on the member list yet. If you just signed up, Jordan will add you shortly and text or email you when you’re in. Otherwise sign up first, or check with Jordan.`; }
+function onNotMember(){ stopListeners(); showAuth('authNotMember'); $('notMemberText').innerHTML = JR
+  ? `<b>${esc(state.authEmail)}</b> isn’t linked to a junior player yet. If you just signed your child up, Jordan will add them shortly and text or email you when they’re in. Otherwise sign up first, or check with Jordan.`
+  : `<b>${esc(state.email)}</b> isn’t on the member list yet. If you just signed up, Jordan will add you shortly and text or email you when you’re in. Otherwise sign up first, or check with Jordan.`; }
+// ── junior: a parent signs in and acts for one child at a time ──
+function myKids(){ const a=state.authEmail; return state.players.filter(p=>!p.paper&&a&&(p.parent===a||p.parent2===a)).sort((x,y)=>x.name.localeCompare(y.name)); }
+function pickKid(){
+  const kids=myKids(); state.kids=kids;
+  if(!kids.length){ state.email=state.authEmail; renderKidBar(); return; }
+  let id=null; try{ id=localStorage.getItem('jrKid'); }catch(e){}
+  if(!kids.some(k=>k.id===id)) id=kids.some(k=>k.id===state.email)?state.email:kids[0].id;
+  state.email=id; renderKidBar();
+}
+function renderKidBar(){
+  let bar=$('kidBar');
+  if(!bar){ bar=document.createElement('div'); bar.id='kidBar'; bar.className='kid-bar'; const tb=document.querySelector('.topbar'); tb.parentNode.insertBefore(bar,tb.nextSibling); }
+  const kids=state.kids||[];
+  bar.hidden=!kids.length||!booted&&$('appMain').hidden;
+  if(!kids.length){ bar.innerHTML=''; return; }
+  bar.innerHTML=kids.length===1
+    ?`<span>Playing as</span><b>${esc(kids[0].name)}</b>`
+    :`<label for="kidSel">Playing as</label><select id="kidSel" onchange="switchKid(this.value)">${kids.map(k=>`<option value="${esc(k.id)}"${k.id===state.email?' selected':''}>${esc(k.name)}</option>`).join('')}</select>`;
+}
+function switchKid(id){
+  try{ localStorage.setItem('jrKid',id); }catch(e){}
+  state.email=id; renderKidBar(); rerender();
+  if(currentPage==='Challenge') initChallengePage(false);
+  toast('Now playing as '+displayName(id).split(' ')[0]);
+}
 function afterData(){
   if(!Object.values(state.ready).every(Boolean)) return;
+  if(JR) pickKid();
   if(!me() && !state.isAdmin){ onNotMember(); return; }
   if(!booted){
     booted=true;
@@ -214,15 +255,42 @@ function getPlayer(id){ return state.players.find(p=>p.id===id) }
 function me(){ return getPlayer(state.email) }
 function displayName(id){ const p=getPlayer(id); return p?p.name:(id||'Unknown'); }
 
-const LADDERS={
+const ADULT_LADDERS={
   ms:{label:"Men's Singles",  short:"M Singles", flag:'singles',base:'baseSingles',utr:'utrSingles',gender:'M',color:'var(--accent-hi)',chip:'chip-blue'},
   ws:{label:"Women's Singles",short:"W Singles", flag:'singles',base:'baseSingles',utr:'utrSingles',gender:'F',color:'var(--accent-hi)',chip:'chip-blue'},
-  md:{label:"Men's Doubles",  short:"M Doubles", flag:'doubles',base:'baseDoubles',utr:'utrDoubles',gender:'M',color:'var(--green)',chip:'chip-green'},
-  wd:{label:"Women's Doubles",short:"W Doubles", flag:'doubles',base:'baseDoubles',utr:'utrDoubles',gender:'F',color:'var(--green)',chip:'chip-green'},
-  mx:{label:'Mixed Doubles',  short:'Mixed',     flag:'mixed',  base:'baseMixed',  utr:'utrDoubles',gender:null,color:'var(--purple)',chip:'chip-purple'},
+  md:{label:"Men's Doubles",  short:"M Doubles", flag:'doubles',base:'baseDoubles',utr:'utrDoubles',gender:'M',color:'var(--green)',chip:'chip-green',dbl:true},
+  wd:{label:"Women's Doubles",short:"W Doubles", flag:'doubles',base:'baseDoubles',utr:'utrDoubles',gender:'F',color:'var(--green)',chip:'chip-green',dbl:true},
+  mx:{label:'Mixed Doubles',  short:'Mixed',     flag:'mixed',  base:'baseMixed',  utr:'utrDoubles',gender:null,color:'var(--purple)',chip:'chip-purple',dbl:true},
 };
-const LADDER_ORDER=['ms','ws','md','wd','mx'];
-function isDoubles(t){ return t==='md'||t==='wd'||t==='mx' }
+// Junior singles: one division per player, by ball color and age group. Junior Doubles is open to everyone who opts in.
+const jrDiv=(div,label,short,color,chip)=>({label,short,div,flag:'singles',base:'baseSingles',utr:'utrSingles',color,chip});
+const JR_LADDERS={
+  o10:jrDiv('o10','Orange Ball 10U','Orange 10U','var(--gold)','chip-gold'),
+  g12:jrDiv('g12','Green Ball 12U','Green 12U','var(--green)','chip-green'),
+  b14:jrDiv('b14','Boys 14U','Boys 14U','var(--accent-hi)','chip-blue'),
+  g14:jrDiv('g14','Girls 14U','Girls 14U','var(--purple)','chip-purple'),
+  b16:jrDiv('b16','Boys 16U','Boys 16U','var(--accent-hi)','chip-blue'),
+  g16:jrDiv('g16','Girls 16U','Girls 16U','var(--purple)','chip-purple'),
+  b18:jrDiv('b18','Boys 18U','Boys 18U','var(--accent-hi)','chip-blue'),
+  g18:jrDiv('g18','Girls 18U','Girls 18U','var(--purple)','chip-purple'),
+  jd:{label:'Junior Doubles',short:'Doubles',flag:'doubles',base:'baseDoubles',utr:'utrDoubles',gender:null,color:'var(--green)',chip:'chip-green',dbl:true},
+};
+const LADDERS=JR?JR_LADDERS:ADULT_LADDERS;
+const LADDER_ORDER=JR?['o10','g12','b14','g14','b16','g16','b18','g18','jd']:['ms','ws','md','wd','mx'];
+const JR_DIVISIONS=['o10','g12','b14','g14','b16','g16','b18','g18'];
+const BALLS=['Red','Orange','Green','Yellow'];
+state.activeLadder=LADDER_ORDER[0];
+function isDoubles(t){ return !!(LADDERS[t]&&LADDERS[t].dbl) }
+function inLadder(p,t){ const L=LADDERS[t]; if(!L) return false; if(L.div) return p.division===L.div; return !!p[L.flag]&&(!L.gender||p.gender===L.gender); }
+// level shown next to a name: NTRP for adults, ball color for juniors
+function lvl(p){ return JR?(p.ntrp?esc(p.ntrp)+' ball':'Junior'):'NTRP '+esc(p.ntrp); }
+// starting division from birth year, gender and ball color (age = age during SEASON_YEAR)
+function suggestDivision(birthYear,gender,ball){
+  if(ball==='Red'||ball==='Orange') return 'o10';
+  if(ball==='Green') return 'g12';
+  const age=SEASON_YEAR-Number(birthYear||0), g=gender==='F'?'g':'b';
+  return g+(age<=14?'14':age<=16?'16':'18');
+}
 function ladderLabel(t){ return LADDERS[t]?LADDERS[t].label:t }
 function ladderColor(t){ return LADDERS[t].color }
 function playedIn(x,id){ return x.p1===id||x.p2===id||x.p1Partner===id||x.p2Partner===id }
@@ -295,10 +363,10 @@ function getRating(p,t){
   return r-decayPenalty(p);
 }
 function record(p){ let w=0,l=0; for(const m of state.matches){ if(!playedIn(m,p.id)||!counts(m)||!inWindow(m)) continue; wonBy(m,p.id)?w++:l++; } return {w,l}; }
-function playerLadders(p){ return LADDER_ORDER.filter(t=>{const L=LADDERS[t];return p[L.flag]&&(!L.gender||p.gender===L.gender)}); }
+function playerLadders(p){ return LADDER_ORDER.filter(t=>inLadder(p,t)); }
 function getRanked(t){
   const L=LADDERS[t];
-  return state.players.filter(p=>p.active!==false&&p[L.flag]&&(!L.gender||p.gender===L.gender)&&(RANK_AS_OF==null||joinMs(p)<=RANK_AS_OF))
+  return state.players.filter(p=>p.active!==false&&inLadder(p,t)&&(RANK_AS_OF==null||joinMs(p)<=RANK_AS_OF))
     .map(p=>({p,r:getRating(p,t)})).sort((a,b)=>b.r-a.r||a.p.name.localeCompare(b.p.name)).map(x=>x.p);
 }
 function ranksAsOf(t,ms){ RANK_AS_OF=ms; try{ return getRanked(t).map(p=>p.id); } finally{ RANK_AS_OF=null; } }
@@ -349,7 +417,7 @@ function renderHome(){
     $('heroName').textContent='Admin'; $('heroRank').textContent='You’re signed in as the ladder admin.';
     $('heroWins').textContent=state.players.length; $('heroLosses').textContent=state.matches.length;
     $('heroRating').textContent='—'; $('heroPending').textContent=state.signups.filter(s=>s.status==='pending').length;
-    $('pendingList').innerHTML=`<div class="empty"><div class="empty-title">Manage the ladder from the Admin tab</div><div class="empty-sub">Add yourself as a player there if you want to compete too.</div></div>`;
+    $('pendingList').innerHTML=`<div class="empty"><div class="empty-title">Manage the ladder from the Admin tab</div><div class="empty-sub">${JR?'Junior players, sign-ups, scores and Matchplay Days are all there.':'Add yourself as a player there if you want to compete too.'}</div></div>`;
     $('recentList').innerHTML=recentMatchesHtml(state.matches.slice(0,5),null);
     return;
   }
@@ -382,7 +450,7 @@ function renderHome(){
           <button class="btn btn-green btn-sm" onclick="respondChallenge('${c.id}','accepted')">Accept</button>
           <button class="btn btn-secondary btn-sm" onclick="respondChallenge('${c.id}','declined')">Decline</button>
           ${other&&other.phone?`<a class="btn btn-secondary btn-sm" href="sms:${esc(other.phone.replace(/\\D/g,''))}">Text</a>`:''}
-        </div>`:`<div class="match-actions">${c.status==='accepted'?bookBtn(c.date):''}${c.status==='accepted'?`<button class="btn btn-secondary btn-sm" onclick="toggleRain('${c.id}')">🌧️ Rained out</button>`:''}${c.from===m.id?`<button class="btn btn-secondary btn-sm" onclick="cancelChallenge('${c.id}')">Withdraw</button>`:''}${other&&other.phone?`<a class="btn btn-secondary btn-sm" href="sms:${esc(other.phone.replace(/\\D/g,''))}">Text ${esc(other.name.split(' ')[0])}</a>`:''}</div>${c.status==='accepted'?rainPanel(c):''}`}
+        </div>`:`<div class="match-actions">${c.status==='accepted'?bookBtn(c.date):''}${c.status==='accepted'?`<button class="btn btn-secondary btn-sm" onclick="toggleRain('${c.id}')">🌧️ Rained out</button>`:''}${c.from===m.id?`<button class="btn btn-secondary btn-sm" onclick="cancelChallenge('${c.id}')">Withdraw</button>`:''}${other&&other.phone?`<a class="btn btn-secondary btn-sm" href="sms:${esc(other.phone.replace(/\\D/g,''))}">Text ${JR?'parent':esc(other.name.split(' ')[0])}</a>`:''}</div>${c.status==='accepted'?rainPanel(c):''}`}
       </div>`;
     }).join('');
   }
@@ -471,7 +539,7 @@ function renderLadder(){
     return `<div class="rank-card" onclick="openPlayerSheet('${esc(p.id)}')" style="${isMe?'background:rgba(45,107,228,.07);border-left:3px solid var(--accent);':''}">
       <div class="rank-num${rank<=3?' top3':''}">${rank}</div><div class="avatar">${esc(p.initials)}</div>
       <div class="rank-info"><div class="rank-name">${esc(p.name)}${isMe?' <span style="font-size:11px;color:var(--accent-hi)">(you)</span>':''}</div>
-        <div class="rank-meta">${isPaper(p)?'<span title="Plays without the app" style="font-size:11px">📞</span> ':''}${isNewMember(p)&&seasonStarted()?'<span class="chip chip-green" style="padding:1px 6px;font-size:10px">NEW</span> ':''}${decayPenalty(p)?`<span class="chip chip-red" style="padding:1px 6px;font-size:10px">\u2212${decayPenalty(p)} idle</span> `:''}NTRP ${esc(p.ntrp)} · ${rec.w}W ${rec.l}L${showUTR&&utr?` · <span class="utr-badge" style="vertical-align:middle"><span class="utr-label">UTR</span>${Number(utr).toFixed(2)}</span>`:''}</div></div>
+        <div class="rank-meta">${isPaper(p)?'<span title="Plays without the app" style="font-size:11px">📞</span> ':''}${isNewMember(p)&&seasonStarted()?'<span class="chip chip-green" style="padding:1px 6px;font-size:10px">NEW</span> ':''}${decayPenalty(p)?`<span class="chip chip-red" style="padding:1px 6px;font-size:10px">\u2212${decayPenalty(p)} idle</span> `:''}${lvl(p)} · ${rec.w}W ${rec.l}L${showUTR&&utr?` · <span class="utr-badge" style="vertical-align:middle"><span class="utr-label">UTR</span>${Number(utr).toFixed(2)}</span>`:''}</div></div>
       <div style="text-align:right"><div class="rank-rating" style="color:${color}">${rating}</div><div style="font-size:11px;color:var(--fg2)">pts</div></div></div>`;
   }).join('')}</div>`;
 }
@@ -491,7 +559,7 @@ function openPlayerSheet(id){
   if(p.utrDoubles) utrParts.push(`<span class="utr-badge"><span class="utr-label">UTR-D</span>${Number(p.utrDoubles).toFixed(2)}</span>`);
   const digits=(p.phone||'').replace(/\D/g,'');
   const contact=!isMe?`<div class="card" style="padding:12px 14px;margin-bottom:14px">
-      <div style="font-size:10px;color:var(--fg2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Contact</div>
+      <div style="font-size:10px;color:var(--fg2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">${JR?'Parent contact'+(p.parentName?' · '+esc(p.parentName):''):'Contact'}</div>
       ${isPaper(p)?`<div style="font-size:13px;line-height:1.5;margin-bottom:8px;padding:8px 10px;border-radius:8px;background:rgba(232,184,75,.14)">📞 <b>${esc(p.name.split(' ')[0])} plays without the app.</b> Call or text to set up a match. Either of you can turn in a paper score card, or you can enter the score in the app.</div>`:''}
       ${p.phone?`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px"><span style="user-select:all">${esc(p.phone)}</span><span style="display:flex;gap:6px"><a class="btn btn-secondary btn-sm" href="sms:${digits}">Text</a><a class="btn btn-secondary btn-sm" href="tel:${digits}">Call</a></span></div>`:''}
       ${p.email?`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="user-select:all;font-size:13px;overflow:hidden;text-overflow:ellipsis">${esc(p.email)}</span><a class="btn btn-secondary btn-sm" href="mailto:${esc(p.email)}">Email</a></div>`:''}
@@ -500,7 +568,7 @@ function openPlayerSheet(id){
   $('sheetBody').innerHTML=`
     <div style="text-align:center;margin-bottom:16px">
       <div class="avatar" style="width:60px;height:60px;font-size:24px;margin:0 auto 8px">${esc(p.initials)}</div>
-      <div style="font-size:13px;color:var(--fg2)">NTRP ${esc(p.ntrp)} · ${p.membership==='full'?'Full Member':'Tennis Member'}${p.active===false?' · <span class="chip chip-red">Inactive</span>':''}</div>
+      <div style="font-size:13px;color:var(--fg2)">${JR?lvl(p)+(LADDERS[p.division]?' · '+LADDERS[p.division].label:''):'NTRP '+esc(p.ntrp)+' · '+(p.membership==='full'?'Full Member':'Tennis Member')}${p.active===false?' · <span class="chip chip-red">Inactive</span>':''}</div>
       ${utrParts.length?`<div style="margin-top:8px;display:flex;justify-content:center;gap:8px;flex-wrap:wrap">${utrParts.join('')}</div>`:''}
     </div>
     ${ratingBlocks.length?`<div style="display:grid;grid-template-columns:repeat(${Math.min(3,ratingBlocks.length)},1fr);gap:8px;margin-bottom:16px">${ratingBlocks.join('')}</div>`:''}
@@ -515,18 +583,18 @@ function openPlayerSheet(id){
         <div class="form-row">
           <div class="form-group"><label class="form-label">Base S</label><input type="number" id="admBaseS" value="${p.baseSingles??NTRP_BASE[p.ntrp]??1200}"></div>
           <div class="form-group"><label class="form-label">Base D</label><input type="number" id="admBaseD" value="${p.baseDoubles??NTRP_BASE[p.ntrp]??1200}"></div>
-          <div class="form-group"><label class="form-label">Base MX</label><input type="number" id="admBaseM" value="${p.baseMixed??NTRP_BASE[p.ntrp]??1200}"></div>
+          ${JR?'':`<div class="form-group"><label class="form-label">Base MX</label><input type="number" id="admBaseM" value="${p.baseMixed??NTRP_BASE[p.ntrp]??1200}"></div>`}
         </div>
         <div class="form-row">
           <div class="form-group"><label class="form-label">UTR S</label><input type="number" step="0.01" id="admUtrS" value="${p.utrSingles??''}"></div>
           <div class="form-group"><label class="form-label">UTR D</label><input type="number" step="0.01" id="admUtrD" value="${p.utrDoubles??''}"></div>
           <div class="form-group"><label class="form-label">Billing starts</label><input type="date" id="admBilling" value="${esc(p.billingStart||'')}"></div>
         </div>
-        <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:13px;margin-bottom:12px">
+        ${JR?jrAdminFields(p):`<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:13px;margin-bottom:12px">
           <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="admSingles" ${p.singles?'checked':''}>Singles</label>
           <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="admDoubles" ${p.doubles?'checked':''}>Doubles</label>
           <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="admMixed" ${p.mixed?'checked':''}>Mixed</label>
-        </div>
+        </div>`}
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-primary btn-sm" onclick="adminSavePlayer('${esc(id)}')">Save</button>
           <button class="btn ${p.active===false?'btn-green':'btn-danger'} btn-sm" onclick="adminToggleActive('${esc(id)}',${p.active===false})">${p.active===false?'Reactivate':'Mark Inactive'}</button>
@@ -545,7 +613,8 @@ function closeSheet(id){ $(id).classList.remove('open') }
 function initChallengePage(keep){
   const m=me(); if(!m){ $('chlLadder').innerHTML=$('scoreLadder').innerHTML=`<option value="">Admins without a player record can’t play</option>`; return; }
   const mine=playerLadders(m);
-  if(!mine.length&&$('chlNote')) $('chlNote').innerHTML=`<div style="font-size:12.5px;line-height:1.5;padding:10px 12px;border-radius:8px;background:rgba(155,114,240,.12);color:var(--fg);margin-bottom:14px">🥂 <b>You’re a social member</b>, so you’re not on the ranked ladder. Find games on the <b>Practice</b> tab and join the monthly mixers on <b>Events</b>. Want to be ranked? Ask Jordan to add you to a draw.</div>`;
+  if(!mine.length&&$('chlNote')&&JR) $('chlNote').innerHTML=`<div style="font-size:12.5px;line-height:1.5;padding:10px 12px;border-radius:8px;background:rgba(232,184,75,.14);color:var(--fg);margin-bottom:14px"><b>${esc(m.name.split(' ')[0])} isn’t in a draw yet.</b> Ask Jordan to place them.</div>`;
+  else if(!mine.length&&$('chlNote')) $('chlNote').innerHTML=`<div style="font-size:12.5px;line-height:1.5;padding:10px 12px;border-radius:8px;background:rgba(155,114,240,.12);color:var(--fg);margin-bottom:14px">🥂 <b>You’re a social member</b>, so you’re not on the ranked ladder. Find games on the <b>Practice</b> tab and join the monthly mixers on <b>Events</b>. Want to be ranked? Ask Jordan to add you to a draw.</div>`;
   const opts=mine.length?mine.map(t=>`<option value="${t}">${LADDERS[t].label}</option>`).join(''):`<option value="">Not enrolled in any ladder</option>`;
   const c=$('chlLadder').value, s=$('scoreLadder').value;
   $('chlLadder').innerHTML=opts; $('scoreLadder').innerHTML=opts;
@@ -606,18 +675,18 @@ async function sendChallenge(){
   if(!to){ toast('No eligible opponents above you'); return; }
   if(state.challenges.some(c=>isOpenChallenge(c)&&!isExpired(c)&&c.ladder===ladder&&((c.from===state.email&&c.to===to)||(c.from===to&&c.to===state.email)))){ toast('You already have an open challenge with them'); return; }
   try{
-    await db.collection('challenges').add({from:state.email,to,ladder,date:$('chlDate').value,message:$('chlMessage').value.trim().slice(0,300),status:'pending',createdAt:FieldValue.serverTimestamp()});
+    await db.collection(COL('challenges')).add({from:state.email,to,ladder,date:$('chlDate').value,message:$('chlMessage').value.trim().slice(0,300),status:'pending',createdAt:FieldValue.serverTimestamp()});
     $('chlMessage').value=''; toast(`Challenge sent! Play by ${fmtShort(Date.now()+CHALLENGE_DAYS*DAY)} 🎾`);
   }catch(e){ toast('Could not send: '+e.message); }
 }
 async function confirmMatch(id,ok){
   try{
-    await db.collection('matches').doc(id).update({status:ok?'confirmed':'disputed',confirmedBy:state.email,confirmedAt:FieldValue.serverTimestamp()});
+    await db.collection(COL('matches')).doc(id).update({status:ok?'confirmed':'disputed',confirmedBy:state.email,confirmedAt:FieldValue.serverTimestamp()});
     toast(ok?'Confirmed \u2014 rankings updated ✓':'Disputed \u2014 Jordan will sort it out');
   }catch(e){ toast('Could not update: '+e.message); }
 }
 async function respondChallenge(cid,status){
-  try{ await db.collection('challenges').doc(cid).update({status,respondedAt:FieldValue.serverTimestamp()}); toast(status==='accepted'?'Challenge accepted! Set up a time by text.':'Challenge declined.'); }
+  try{ await db.collection(COL('challenges')).doc(cid).update({status,respondedAt:FieldValue.serverTimestamp()}); toast(status==='accepted'?'Challenge accepted! Set up a time by text.':'Challenge declined.'); }
   catch(e){ toast('Could not update: '+e.message); }
 }
 // ── rain-outs ──
@@ -640,18 +709,18 @@ async function rainReschedule(cid){
   const d=($('rainDate-'+cid)||{}).value||'';
   const upd={rainedOut:true,rainBy:state.email,rainAt:FieldValue.serverTimestamp(),playBy:rainNewDeadline(c)};
   if(d) upd.date=d;
-  try{ await db.collection('challenges').doc(cid).update(upd); toast(`Rescheduled 🌧️ New play-by date: ${fmtShort(upd.playBy)}`); }
+  try{ await db.collection(COL('challenges')).doc(cid).update(upd); toast(`Rescheduled 🌧️ New play-by date: ${fmtShort(upd.playBy)}`); }
   catch(e){ toast('Could not reschedule: '+e.message); }
 }
 let pendingRainCancel=null;
 async function rainCancel(cid){
   if(pendingRainCancel!==cid){ pendingRainCancel=cid; const b=$('rainCancel-'+cid); if(b) b.textContent='Tap again to cancel the match'; setTimeout(()=>{ if(pendingRainCancel===cid){ pendingRainCancel=null; const b2=$('rainCancel-'+cid); if(b2) b2.textContent='Cancel match · no penalty'; } },4000); return; }
   pendingRainCancel=null;
-  try{ await db.collection('challenges').doc(cid).update({status:'rainout',rainBy:state.email,rainAt:FieldValue.serverTimestamp()}); toast('Match cancelled for rain. No penalty.'); }
+  try{ await db.collection(COL('challenges')).doc(cid).update({status:'rainout',rainBy:state.email,rainAt:FieldValue.serverTimestamp()}); toast('Match cancelled for rain. No penalty.'); }
   catch(e){ toast('Could not cancel: '+e.message); }
 }
 async function cancelChallenge(cid){
-  try{ await db.collection('challenges').doc(cid).delete(); toast('Challenge withdrawn'); }catch(e){ toast('Could not withdraw: '+e.message); }
+  try{ await db.collection(COL('challenges')).doc(cid).delete(); toast('Challenge withdrawn'); }catch(e){ toast('Could not withdraw: '+e.message); }
 }
 async function submitScore(){
   const opp=$('scoreOpponent').value, ladder=$('scoreLadder').value, result=$('scoreResult').value, score=$('scoreInput').value.trim(), date=$('scoreDatePlayed').value;
@@ -664,10 +733,10 @@ async function submitScore(){
   if(dbl){ if(!p1Partner||!p2Partner){ toast('Select both partners'); return; } if(new Set([state.email,p1Partner,opp,p2Partner]).size<4){ toast('Each player can only appear once'); return; } }
   const winner=result==='win'?state.email:opp;
   try{
-    await db.collection('matches').add({p1:state.email,p1Partner,p2:opp,p2Partner,ladder,score:score.slice(0,40),winner,date,submittedBy:state.email,status:'pending',createdAt:FieldValue.serverTimestamp()});
+    await db.collection(COL('matches')).add({p1:state.email,p1Partner,p2:opp,p2Partner,ladder,score:score.slice(0,40),winner,date,submittedBy:state.email,status:'pending',createdAt:FieldValue.serverTimestamp()});
     // auto-close any pending challenge between these two in this draw
     state.challenges.filter(c=>isOpenChallenge(c)&&c.ladder===ladder&&((c.from===state.email&&c.to===opp)||(c.from===opp&&c.to===state.email)))
-      .forEach(c=>db.collection('challenges').doc(c.id).update({status:'played'}).catch(()=>{}));
+      .forEach(c=>db.collection(COL('challenges')).doc(c.id).update({status:'played'}).catch(()=>{}));
     $('scoreInput').value=''; toast(`Score sent \u2014 it counts once ${displayName(opp).split(' ')[0]} confirms (or automatically in ${CONFIRM_HOURS} hours)`);
   }catch(e){ toast('Could not submit: '+e.message); }
 }
@@ -677,11 +746,11 @@ async function submitScore(){
 // ═══════════════════════════════════════════
 function renderProfile(){
   const m=me();
-  $('profEmail').textContent=state.email;
+  $('profEmail').textContent=state.authEmail||state.email;
   if(!m){ $('profileAvatar').textContent='A'; $('profileName').textContent='Ladder Admin'; $('profileMember').textContent=state.email; $('profileChips').innerHTML=''; $('profRanks').innerHTML=''; $('profUTRRow').innerHTML=''; ['profW','profL','profM','profPct'].forEach(id=>$(id).textContent='—'); $('historyList').innerHTML=`<div class="empty"><div class="empty-title">No player record</div><div class="empty-sub">Add yourself from the Admin tab to compete.</div></div>`; return; }
   const mine=playerLadders(m), rec=record(m);
   $('profileAvatar').textContent=m.initials; $('profileName').textContent=m.name;
-  $('profileMember').textContent=(m.membership==='full'?'Full Member':'Tennis Member')+' — Gold River SC';
+  $('profileMember').textContent=JR?[LADDERS[m.division]?LADDERS[m.division].label:'Junior',m.ntrp?m.ntrp+' ball':''].filter(Boolean).join(' · ')+' — Gold River SC':(m.membership==='full'?'Full Member':'Tennis Member')+' — Gold River SC';
   $('profileChips').innerHTML=mine.length?mine.map(t=>`<span class="chip ${LADDERS[t].chip}">${LADDERS[t].short} #${rankIn(m,t)}</span>`).join(''):(m.social?'<span class="chip chip-purple">🥂 Social member</span>':'');
   const rankItems=mine.map(t=>`<div style="text-align:center"><div style="font-size:10px;color:var(--fg2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">${LADDERS[t].short}</div>
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:32px;font-weight:800;color:${LADDERS[t].color}">#${rankIn(m,t)}</div><div style="font-size:12px;color:var(--fg2)">${getRating(m,t)} pts</div></div>`);
@@ -698,7 +767,7 @@ function renderProfile(){
   if(document.activeElement!==$('profAvail')) $('profAvail').value=m.availability||'';
 }
 async function saveContact(){
-  try{ await db.collection('players').doc(state.email).update({phone:$('profPhone').value.trim().slice(0,30),availability:$('profAvail').value.trim().slice(0,120)}); toast('Saved'); }
+  try{ await db.collection(COL('players')).doc(state.email).update({phone:$('profPhone').value.trim().slice(0,30),availability:$('profAvail').value.trim().slice(0,120)}); toast('Saved'); }
   catch(e){ toast('Could not save: '+e.message); }
 }
 
@@ -744,7 +813,7 @@ async function postHit(){
   const days=pickedValues('hitDays'), times=pickedValues('hitTimes');
   if(!days.length){ toast('Pick at least one day'); return; } if(!times.length){ toast('Pick at least one time'); return; }
   try{
-    await db.collection('hits').add({by:state.email,format:$('hitFormat').value,range:parseFloat($('hitRange').value),days,times,note:$('hitNote').value.trim().slice(0,200),posted:today(),responses:[],closed:false,createdAt:FieldValue.serverTimestamp()});
+    await db.collection(COL('hits')).add({by:state.email,format:$('hitFormat').value,range:parseFloat($('hitRange').value),days,times,note:$('hitNote').value.trim().slice(0,200),posted:today(),responses:[],closed:false,createdAt:FieldValue.serverTimestamp()});
     document.querySelectorAll('.day-picker span.on').forEach(s=>s.classList.remove('on')); $('hitNote').value='';
     toast('Posted — members near your level will see it 🎾');
     switchHit('mine',document.querySelectorAll('#hitTabs .tab')[2]);
@@ -753,10 +822,10 @@ async function postHit(){
 async function toggleInterest(id){
   const h=state.hits.find(x=>x.id===id); if(!h) return;
   const replied=(h.responses||[]).includes(state.email);
-  try{ await db.collection('hits').doc(id).update({responses:replied?FieldValue.arrayRemove(state.email):FieldValue.arrayUnion(state.email)}); toast(replied?'Removed your interest':`${displayName(h.by).split(' ')[0]} will see you’re in 🎾`); }
+  try{ await db.collection(COL('hits')).doc(id).update({responses:replied?FieldValue.arrayRemove(state.email):FieldValue.arrayUnion(state.email)}); toast(replied?'Removed your interest':`${displayName(h.by).split(' ')[0]} will see you’re in 🎾`); }
   catch(e){ toast('Could not update: '+e.message); }
 }
-async function closeHit(id){ try{ await db.collection('hits').doc(id).update({closed:true}); toast('Request closed'); }catch(e){ toast('Could not close: '+e.message); } }
+async function closeHit(id){ try{ await db.collection(COL('hits')).doc(id).update({closed:true}); toast('Request closed'); }catch(e){ toast('Could not close: '+e.message); } }
 
 // ═══════════════════════════════════════════
 //  ADMIN
@@ -774,6 +843,7 @@ function renderAdmin(){
 }
 function renderSignupBadge(){ const n=state.signups.filter(s=>s.status==='pending').length; $('signupCount').textContent=n; $('signupCount').hidden=!n; }
 function renderSignups(){
+  if(JR) return jrRenderSignups();
   const list=state.signups.filter(s=>s.status==='pending').sort((a,b)=>(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0));
   $('signupList').innerHTML=list.length?list.map(s=>{
     const draws=(s.draws||[]); const exists=!!getPlayer(norm(s.email));
@@ -787,6 +857,7 @@ function renderSignups(){
 }
 async function approveSignup(id){
   const s=state.signups.find(x=>x.id===id); if(!s) return;
+  if(JR) return jrApproveSignup(s);
   const email=norm(s.email); const draws=s.draws||[];
   const ntrp=String(s.ntrp||'3.5').replace('+','');
   const existing=getPlayer(email)||{};
@@ -801,13 +872,13 @@ async function approveSignup(id){
     createdAt:existing.createdAt||FieldValue.serverTimestamp(), approvedBy:state.email
   };
   try{
-    await db.collection('players').doc(email).set(doc,{merge:true});
-    await db.collection('signups').doc(id).update({status:'approved',approvedAt:FieldValue.serverTimestamp()});
+    await db.collection(COL('players')).doc(email).set(doc,{merge:true});
+    await db.collection(COL('signups')).doc(id).update({status:'approved',approvedAt:FieldValue.serverTimestamp()});
     toast(`${doc.name} added to the ladder ✓`);
     setTimeout(()=>openWelcome(email),350);
   }catch(e){ toast('Could not approve: '+e.message); }
 }
-async function declineSignup(id){ try{ await db.collection('signups').doc(id).update({status:'declined'}); toast('Declined'); }catch(e){ toast('Could not update: '+e.message); } }
+async function declineSignup(id){ try{ await db.collection(COL('signups')).doc(id).update({status:'declined'}); toast('Declined'); }catch(e){ toast('Could not update: '+e.message); } }
 function filterAdminPlayers(q){ renderAdminPlayers(q.toLowerCase()) }
 function renderAdminPlayers(filter=''){
   const players=[...state.players].filter(p=>!filter||p.name.toLowerCase().includes(filter)||(p.email||'').includes(filter)).sort((a,b)=>a.name.localeCompare(b.name));
@@ -820,7 +891,7 @@ function renderAdminPlayers(filter=''){
         <div class="avatar" style="width:34px;height:34px;font-size:13px">${esc(p.initials)}</div>
         <div style="flex:1;min-width:0">
           <div style="font-weight:600;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.name)}</div>
-          <div style="font-size:12px;color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">NTRP ${esc(p.ntrp)} \u00b7 ${p.gender==='F'?"Women's":"Men's"} \u00b7 ${isPaper(p)?'📞 paper player'+(p.phone?' \u00b7 '+esc(p.phone):''):esc(p.email)}</div>
+          <div style="font-size:12px;color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${JR?lvl(p)+(p.birthYear?' \u00b7 born '+esc(p.birthYear):''):'NTRP '+esc(p.ntrp)+' \u00b7 '+(p.gender==='F'?"Women's":"Men's")} \u00b7 ${isPaper(p)?'📞 paper player'+(p.phone?' \u00b7 '+esc(p.phone):''):esc(p.email)}</div>
         </div>
         <span class="chip ${p.active!==false?'chip-green':'chip-red'}">${p.active!==false?'Active':'Inactive'}</span>
         <span style="color:var(--fg2);font-size:20px;line-height:1">\u203a</span>
@@ -864,23 +935,24 @@ function renderAdminMatches(){
       <button class="btn btn-danger btn-sm" onclick="deleteMatch('${m.id}')">Del</button></div></div>`;}).join('')
     :`<div class="empty"><div class="empty-title">No matches recorded</div></div>`)+'</div>';
 }
-async function adminResolveMatch(id){ try{ await db.collection('matches').doc(id).update({status:'confirmed',resolvedBy:state.email}); toast('Counted \u2014 rankings updated'); }catch(e){ toast('Could not update: '+e.message); } }
+async function adminResolveMatch(id){ try{ await db.collection(COL('matches')).doc(id).update({status:'confirmed',resolvedBy:state.email}); toast('Counted \u2014 rankings updated'); }catch(e){ toast('Could not update: '+e.message); } }
 async function awardForfeit(cid){
   const c=state.challenges.find(x=>x.id===cid); if(!c) return;
   try{
-    await db.collection('matches').add({p1:c.from,p1Partner:null,p2:c.to,p2Partner:null,ladder:c.ladder,score:'Forfeit',winner:c.from,date:today(),submittedBy:state.email,status:'confirmed',forfeit:true,createdAt:FieldValue.serverTimestamp()});
-    await db.collection('challenges').doc(cid).update({status:'forfeited'});
+    await db.collection(COL('matches')).add({p1:c.from,p1Partner:null,p2:c.to,p2Partner:null,ladder:c.ladder,score:'Forfeit',winner:c.from,date:today(),submittedBy:state.email,status:'confirmed',forfeit:true,createdAt:FieldValue.serverTimestamp()});
+    await db.collection(COL('challenges')).doc(cid).update({status:'forfeited'});
     toast(`Forfeit win recorded for ${displayName(c.from).split(' ')[0]}`);
   }catch(e){ toast('Could not record: '+e.message); }
 }
-async function voidChallenge(cid){ try{ await db.collection('challenges').doc(cid).update({status:'void'}); toast('Challenge voided'); }catch(e){ toast('Could not update: '+e.message); } }
+async function voidChallenge(cid){ try{ await db.collection(COL('challenges')).doc(cid).update({status:'void'}); toast('Challenge voided'); }catch(e){ toast('Could not update: '+e.message); } }
 let pendingDelete=null;
 async function deleteMatch(id){
   if(pendingDelete!==id){ pendingDelete=id; toast('Tap Del again to confirm'); setTimeout(()=>{ if(pendingDelete===id) pendingDelete=null; },4000); return; }
   pendingDelete=null;
-  try{ await db.collection('matches').doc(id).delete(); toast('Match deleted — ratings recalculated'); }catch(e){ toast('Could not delete: '+e.message); }
+  try{ await db.collection(COL('matches')).doc(id).delete(); toast('Match deleted — ratings recalculated'); }catch(e){ toast('Could not delete: '+e.message); }
 }
 async function addPlayer(){
+  if(JR) return jrAddPlayer();
   const name=$('addName').value.trim(), paper=$('addPaper').checked;
   let email=norm($('addEmail').value);
   if(!name){ toast('Please enter a name'); return; }
@@ -896,7 +968,7 @@ async function addPlayer(){
   if(!singles&&!doubles&&!mixed&&!social){ toast('Pick at least one draw, or tick Social member'); return; }
   if(!paper&&getPlayer(email)){ toast('That email is already on the ladder'); return; }
   try{
-    await db.collection('players').doc(id).set({
+    await db.collection(COL('players')).doc(id).set({
       name,initials:initialsOf(name),email:paper?(email||''):email,paper,phone:$('addPhone').value.trim(),ntrp,gender:$('addGender').value,membership:$('addMembership').value,
       utrSingles:parseFloat($('addUTRS').value)||null,utrDoubles:parseFloat($('addUTRD').value)||null,
       singles,doubles,mixed,social,active:true,baseSingles:base,baseDoubles:base,baseMixed:base,billingStart:'2027-01-01',availability:'',createdAt:FieldValue.serverTimestamp(),approvedBy:state.email
@@ -914,8 +986,9 @@ function togglePaperForm(){
 }
 async function adminSavePlayer(id){
   const num=v=>{ const n=parseFloat(v); return isNaN(n)?null:n; };
+  if(JR) return jrSavePlayer(id,num);
   try{
-    await db.collection('players').doc(id).update({
+    await db.collection(COL('players')).doc(id).update({
       baseSingles:num($('admBaseS').value)??1200, baseDoubles:num($('admBaseD').value)??1200, baseMixed:num($('admBaseM').value)??1200,
       utrSingles:num($('admUtrS').value), utrDoubles:num($('admUtrD').value), billingStart:$('admBilling').value||'',
       singles:$('admSingles').checked, doubles:$('admDoubles').checked, mixed:$('admMixed').checked,
@@ -925,18 +998,19 @@ async function adminSavePlayer(id){
   }catch(e){ toast('Could not save: '+e.message); }
 }
 // ── welcome message (sent from the admin's own phone; no email service needed) ──
-const APP_URL='https://jpboyls-crypto.github.io/gold-river-ladder/';
+const APP_URL='https://jpboyls-crypto.github.io/gold-river-ladder/'+(JR?'junior/':'');
 // Setup steps shared by the text and the email.
 function setupSteps(p){
   return `1) Open this link on your phone — in Safari on iPhone, Chrome on Android:\n${APP_URL}\n\n`+
     `2) Add it to your home screen first.\n   iPhone: tap the Share button (square with the up arrow) → Add to Home Screen → Add.\n   Android: tap the ⋮ menu → Add to Home screen (or Install app).\n\n`+
-    `3) Open the new GR Ladder icon, enter ${p.email} and tap "Email me a sign-in link."\n\n`+
+    `3) Open the new ${JR?'GR Junior Ladder':'GR Ladder'} icon, enter ${p.email} and tap "Email me a sign-in link."\n\n`+
     `4) In that email, don't tap the link — press and hold it, choose Copy Link, then go back to the ladder app, paste it in the box and tap Sign in. (Check spam the first time.)\n\n`+
     `That's it — you'll stay signed in after that.`;
 }
 function seasonLabel(){ return new Date(SEASON_START+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}); }
 // Short version for a text message.
 function welcomeText(p){
+  if(JR) return jrWelcomeText(p);
   const first=(p.name||'').split(' ')[0]||'there';
   const draws=playerLadders(p).map(t=>LADDERS[t].label).join(', ');
   return `Hi ${first}, you're in! Welcome to the Gold River Tennis Ladder${draws?' ('+draws+')':''}.\n\n`+
@@ -945,6 +1019,7 @@ function welcomeText(p){
 }
 // Full version for email: setup + a tour of everything the app does.
 function welcomeEmail(p){
+  if(JR) return jrWelcomeEmail(p);
   const first=(p.name||'').split(' ')[0]||'there';
   const draws=playerLadders(p).map(t=>LADDERS[t].label);
   const pts=getRating(p,playerLadders(p)[0]||'ms');
@@ -991,7 +1066,7 @@ function smsHref(phone,body){ const n=(phone||'').replace(/\D/g,''); const ios=/
 function openWelcome(id){
   const p=getPlayer(id); if(!p) return;
   const sms=welcomeText(p), mail=welcomeEmail(p);
-  const subj=encodeURIComponent('Welcome to the Gold River Tennis Ladder');
+  const subj=encodeURIComponent('Welcome to the '+LADDER_NAME);
   const pre='white-space:pre-wrap;word-break:break-word;font:13px/1.5 Inter,system-ui,sans-serif;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin:8px 0 10px;max-height:260px;overflow:auto';
   $('sheetName').textContent='Send welcome';
   $('sheetBody').innerHTML=`
@@ -1022,7 +1097,7 @@ function openAdminScore(){
   $('sheetName').textContent='Enter a score';
   const drawOpts=LADDER_ORDER.map(t=>`<option value="${t}">${LADDERS[t].label}</option>`).join('');
   $('sheetBody').innerHTML=`
-    <div style="font-size:13px;color:var(--fg2);line-height:1.5;margin-bottom:12px">For paper score cards or results reported to you. Scores you enter count right away — no confirmation step.</div>
+    <div style="font-size:13px;color:var(--fg2);line-height:1.5;margin-bottom:12px">${JR?'For Matchplay Days, paper score cards or results reported to you. Scores you enter count right away, and the form stays open for the next match.':'For paper score cards or results reported to you. Scores you enter count right away — no confirmation step.'}</div>
     <div class="form-group"><label class="form-label">Draw</label><select id="asDraw" onchange="asFill()">${drawOpts}</select></div>
     <div class="card" style="padding:12px;margin-bottom:12px">
       <div class="form-label" style="margin-bottom:8px">Side 1</div>
@@ -1069,10 +1144,10 @@ async function saveAdminScore(){
   if(!date){ toast('Enter the date played'); return; }
   const winner=asWin===1?a1:b1;
   try{
-    await db.collection('matches').add({p1:a1,p1Partner:a2,p2:b1,p2Partner:b2,ladder:t,score:score.slice(0,40),winner,date,
+    await db.collection(COL('matches')).add({p1:a1,p1Partner:a2,p2:b1,p2Partner:b2,ladder:t,score:score.slice(0,40),winner,date,
       submittedBy:state.email,enteredByAdmin:true,status:'confirmed',createdAt:FieldValue.serverTimestamp()});
     state.challenges.filter(c=>isOpenChallenge(c)&&c.ladder===t&&((c.from===a1&&c.to===b1)||(c.from===b1&&c.to===a1)))
-      .forEach(c=>db.collection('challenges').doc(c.id).update({status:'played'}).catch(()=>{}));
+      .forEach(c=>db.collection(COL('challenges')).doc(c.id).update({status:'played'}).catch(()=>{}));
     toast(`Saved — ${displayName(winner).split(' ')[0]}${dbl?' & '+displayName(asWin===1?a2:b2).split(' ')[0]:''} win ${score}`);
     $('asScore').value=''; ['asA1','asA2','asB1','asB2'].forEach(id=>{ if($(id)) $(id).value=''; }); asWinner(1); asFill();
   }catch(e){ toast('Could not save: '+e.message); }
@@ -1081,7 +1156,8 @@ let pendingPlayerDelete=null;
 async function adminDeletePlayer(id){
   if(pendingPlayerDelete!==id){ pendingPlayerDelete=id; toast('Tap Delete again to confirm'); setTimeout(()=>{ if(pendingPlayerDelete===id) pendingPlayerDelete=null; },4000); return; }
   pendingPlayerDelete=null;
-  try{ await db.collection('players').doc(id).delete(); toast('Player deleted'); closeSheet('playerSheet'); }catch(e){ toast('Could not delete: '+e.message); }
+  const gone=getPlayer(id);
+  try{ await db.collection(COL('players')).doc(id).delete(); if(JR&&gone) await syncFamilies(id,[gone.parent,gone.parent2],[]); toast('Player deleted'); closeSheet('playerSheet'); }catch(e){ toast('Could not delete: '+e.message); }
 }
 // Marking inactive starts a "hold"; reactivating closes it. Days on hold never count toward inactivity decay.
 async function adminToggleActive(id,makeActive){
@@ -1089,7 +1165,7 @@ async function adminToggleActive(id,makeActive){
   const upd = makeActive
     ? {active:true, inactiveSince:null, holds:FieldValue.arrayUnion({from:p.inactiveSince||today(), to:today()})}
     : {active:false, inactiveSince:today()};
-  try{ await db.collection('players').doc(id).update(upd); toast(makeActive?'Reactivated \u2014 no points lost for the time away':'Marked inactive \u2014 off the ladder, no decay while away'); closeSheet('playerSheet'); }catch(e){ toast('Could not update: '+e.message); }
+  try{ await db.collection(COL('players')).doc(id).update(upd); toast(makeActive?'Reactivated \u2014 no points lost for the time away':'Marked inactive \u2014 off the ladder, no decay while away'); closeSheet('playerSheet'); }catch(e){ toast('Could not update: '+e.message); }
 }
 
 
@@ -1103,6 +1179,11 @@ const EVENT_TYPES={
   clinic:{label:'Clinic / Drill',icon:'🎾',color:'var(--green)',bg:'rgba(58,170,106,.15)',join:"I'm in",joined:'In \u2713',who:'in'},
   other:{label:'Other',icon:'📌',color:'var(--accent-hi)',bg:'rgba(45,107,228,.15)',join:"I'm going",joined:'Going \u2713',who:'going'}
 };
+if(JR){ // Matchplay Days first in the junior event list; no monthly mixers
+  const rest={...EVENT_TYPES}; delete rest.mixer;
+  Object.keys(EVENT_TYPES).forEach(k=>delete EVENT_TYPES[k]);
+  Object.assign(EVENT_TYPES,{matchplay:{label:'Matchplay Day',icon:'🎾',color:'var(--green)',bg:'rgba(58,170,106,.15)',join:'Sign up',joined:'Signed up \u2713',who:'signed up'}},rest);
+}
 let showPast=false;
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function parseDay(d){ const [y,m,dd]=(d||'').split('-').map(Number); return new Date(y,(m||1)-1,dd||1); }
@@ -1128,8 +1209,9 @@ function icsHref(e){
 function money(n){ return '$'+(Number(n)%1?Number(n).toFixed(2):Number(n)); }
 function priceLine(e){
   const p=e.price, mp=e.memberPrice;
-  if(mp!=null&&mp!==''&&p!=null&&p!=='') return `Ladder members <b>${money(mp)}</b> · Others ${money(p)}`;
-  if(mp!=null&&mp!=='') return `Ladder members <b>${money(mp)}</b>`;
+  const who=JR?'Ladder players':'Ladder members';
+  if(mp!=null&&mp!==''&&p!=null&&p!=='') return `${who} <b>${money(mp)}</b> · Others ${money(p)}`;
+  if(mp!=null&&mp!=='') return `${who} <b>${money(mp)}</b>`;
   if(p!=null&&p!=='') return Number(p)===0?'<b>Free</b>':`<b>${money(p)}</b> per player`;
   return '';
 }
@@ -1161,18 +1243,18 @@ function renderEvents(){
   $('addEventBtn').hidden=!state.isAdmin;
   const up=upcomingEvents();
   $('eventList').innerHTML=up.length?`<div class="card">${up.map(e=>eventCard(e,false)).join('')}</div>`
-    :`<div class="empty"><div class="empty-icon">📅</div><div class="empty-title">No upcoming events yet</div><div class="empty-sub">${state.isAdmin?'Add a social or set up the quarterly tournaments.':'Quarterly tournaments and socials will show up here.'}</div></div>`;
+    :`<div class="empty"><div class="empty-icon">📅</div><div class="empty-title">No upcoming events yet</div><div class="empty-sub">${JR?(state.isAdmin?'Add a Matchplay Day or junior event with + Add event.':'Matchplay Days and junior events will show up here.'):state.isAdmin?'Add a social or set up the quarterly tournaments.':'Quarterly tournaments and socials will show up here.'}</div></div>`;
   const hasQ = state.events.some(e=>e.type==='tournament'&&(e.date||'').startsWith('2027'));
   const hasMixers = state.events.some(e=>e.type==='mixer');
   const boxes=[];
-  if(state.isAdmin&&!hasMixers){
+  if(state.isAdmin&&!hasMixers&&!JR){
     const moved=MIXER_DATES.filter(x=>x[1]&&x[0]>=today()).map(x=>`${fmtShort(dayMs(x[0]))} (${x[1]})`);
     boxes.push(`<div class="card" style="padding:14px 16px;border-color:var(--purple)">
       <div style="font-weight:700">🥂 Set up the Monthly Ladder Mixers</div>
       <div style="font-size:12.5px;color:var(--fg2);margin:4px 0 10px;line-height:1.5">Adds a mixer on the last Friday of every month through December 2027, 6:30–9:00 PM, $10 per player, with sign-up. Holiday clashes move earlier: ${moved.join('; ')}. You can edit or delete any of them afterwards.</div>
       <button class="btn btn-primary btn-sm" onclick="seedMixers()">Add the mixers</button></div>`);
   }
-  if(state.isAdmin&&!hasQ) boxes.push(`<div class="card" style="padding:14px 16px;border-color:var(--gold)">
+  if(state.isAdmin&&!hasQ&&!JR) boxes.push(`<div class="card" style="padding:14px 16px;border-color:var(--gold)">
       <div style="font-weight:700">🏆 Set up the 2027 quarterly tournaments</div>
       <div style="font-size:12.5px;color:var(--fg2);margin:4px 0 10px;line-height:1.5">Adds four tournaments: Sat Mar 27, Sat Jun 26, Sat Sep 25 and Sat Dec 18 (moved off Christmas). You can edit any date, time or detail afterwards.</div>
       <button class="btn btn-primary btn-sm" onclick="seedQuarterlies()">Add all four</button></div>`);
@@ -1203,7 +1285,7 @@ async function toggleRsvp(id){
   const e=state.events.find(x=>x.id===id); if(!e) return;
   const mine=(e.rsvps||[]).includes(state.email); const T=EVENT_TYPES[e.type]||EVENT_TYPES.other;
   if(!mine&&e.capacity&&(e.rsvps||[]).length>=e.capacity){ toast('Sorry \u2014 this one is full'); return; }
-  try{ await db.collection('events').doc(id).update({rsvps:mine?FieldValue.arrayRemove(state.email):FieldValue.arrayUnion(state.email)}); toast(mine?'Removed':(e.type==='tournament'?'You’re entered! 🏆':e.type==='mixer'?'See you at the mixer! 🎾':'See you there! 🎉')); }
+  try{ await db.collection(COL('events')).doc(id).update({rsvps:mine?FieldValue.arrayRemove(state.email):FieldValue.arrayUnion(state.email)}); toast(mine?'Removed':(e.type==='tournament'?'You’re entered! 🏆':e.type==='mixer'?'See you at the mixer! 🎾':'See you there! 🎉')); }
   catch(err){ toast('Could not update: '+err.message); }
 }
 function openEventForm(id){
@@ -1213,7 +1295,7 @@ function openEventForm(id){
   $('sheetBody').innerHTML=`
     <div class="form-group"><label class="form-label">Type</label>
       <select id="evType" onchange="$('evEligGroup').hidden=this.value!=='tournament'; if(this.value==='mixer'&&!$('evDesc').value){ $('evDesc').value=MIXER_DESC; $('evStart').value='18:30'; $('evEnd').value='21:00'; $('evPrice').value=10; }">
-        ${Object.entries(EVENT_TYPES).map(([k,T])=>`<option value="${k}" ${(e?e.type:'social')===k?'selected':''}>${T.icon} ${T.label}</option>`).join('')}
+        ${Object.entries(EVENT_TYPES).map(([k,T])=>`<option value="${k}" ${(e?e.type:(JR?'matchplay':'social'))===k?'selected':''}>${T.icon} ${T.label}</option>`).join('')}
       </select></div>
     <div class="form-group"><label class="form-label">Title</label><input type="text" id="evTitle" value="${v('title')}" placeholder="e.g. Holiday Ladder Mixer"></div>
     <div class="form-row">
@@ -1252,8 +1334,8 @@ async function saveEvent(id){
     price:$('evPrice').value===''?null:Math.max(0,parseFloat($('evPrice').value)),
     memberPrice:$('evMPrice').value===''?null:Math.max(0,parseFloat($('evMPrice').value))};
   try{
-    if(id) await db.collection('events').doc(id).update(data);
-    else await db.collection('events').add({...data,rsvps:[],createdBy:state.email,createdAt:FieldValue.serverTimestamp()});
+    if(id) await db.collection(COL('events')).doc(id).update(data);
+    else await db.collection(COL('events')).add({...data,rsvps:[],createdBy:state.email,createdAt:FieldValue.serverTimestamp()});
     closeSheet('playerSheet'); toast(id?'Event updated':'Event added 📅');
   }catch(err){ toast('Could not save: '+err.message); }
 }
@@ -1261,7 +1343,7 @@ let pendingEventDelete=null;
 async function deleteEvent(id){
   if(pendingEventDelete!==id){ pendingEventDelete=id; toast('Tap Delete again to confirm'); setTimeout(()=>{ if(pendingEventDelete===id) pendingEventDelete=null; },4000); return; }
   pendingEventDelete=null;
-  try{ await db.collection('events').doc(id).delete(); closeSheet('playerSheet'); toast('Event deleted'); }catch(err){ toast('Could not delete: '+err.message); }
+  try{ await db.collection(COL('events')).doc(id).delete(); closeSheet('playerSheet'); toast('Event deleted'); }catch(err){ toast('Could not delete: '+err.message); }
 }
 // Last Friday of each month, 6:30 PM. Holiday clashes move a week (or two) earlier.
 const MIXER_DATES=[
@@ -1279,7 +1361,7 @@ async function seedMixers(){
   const todo=MIXER_DATES.filter(([d])=>!have.has(d)&&d>=today());
   try{
     for(const [date] of todo){
-      await db.collection('events').add({type:'mixer',title:mixerTitle(date),date,start:'18:30',end:'21:00',location:'Gold River Sports Club',
+      await db.collection(COL('events')).add({type:'mixer',title:mixerTitle(date),date,start:'18:30',end:'21:00',location:'Gold River Sports Club',
         eligibility:'',description:MIXER_DESC,price:10,memberPrice:null,rsvpOn:true,capacity:null,rsvps:[],series:'mixer',createdBy:state.email,createdAt:FieldValue.serverTimestamp()});
     }
     toast(`${todo.length} monthly mixers added 🥂`);
@@ -1289,7 +1371,7 @@ async function seedQuarterlies(){
   const qs=[['2027-03-27','Q1'],['2027-06-26','Q2'],['2027-09-25','Q3'],['2027-12-18','Q4']];
   try{
     for(const [date,q] of qs){
-      await db.collection('events').add({type:'tournament',title:`${q} Ladder Tournament`,date,start:'08:00',end:'16:00',location:'Gold River Sports Club',
+      await db.collection(COL('events')).add({type:'tournament',title:`${q} Ladder Tournament`,date,start:'08:00',end:'16:00',location:'Gold River Sports Club',
         eligibility:'All active ladder players \u2014 seeded by current ladder rank',description:'Quarterly ladder tournament across all five draws. Format and draw sizes will be posted closer to the date.',
         rsvpOn:true,capacity:null,rsvps:[],createdBy:state.email,createdAt:FieldValue.serverTimestamp()});
     }
@@ -1305,6 +1387,7 @@ function renderRules(){
   const sig=state.events.filter(e=>e.type==='tournament').map(e=>e.id+e.date+e.title).join('|');
   if(el.dataset.sig===sig&&el.innerHTML) return;
   const seasonDay=new Date(SEASON_START+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+  if(JR){ el.innerHTML=jrRulesHtml(seasonDay); el.dataset.sig=sig; return; }
   const q=(title,body,open)=>`<details${open?' open':''}><summary>${title}</summary><div class="rules-ans">${body}</div></details>`;
   const sec=(title,items)=>`<div class="rules-sec"><h2>${title}</h2><div class="rules-card">${items.join('')}</div></div>`;
   const tourneys=state.events.filter(e=>e.type==='tournament'&&(e.date||'')>=today()).sort((a,b)=>a.date.localeCompare(b.date));
@@ -1365,7 +1448,7 @@ function renderRules(){
 //  PRINT STANDINGS (admin) — live data, 2 pages: singles / doubles
 // ═══════════════════════════════════════════
 const PRINT_COLOR={singles:'#1c52c7',doubles:'#17713f',mixed:'#5b2fc2'};
-function kindOf(t){ return t==='ms'||t==='ws'?'singles':t==='mx'?'mixed':'doubles'; }
+function kindOf(t){ return !isDoubles(t)?'singles':t==='mx'?'mixed':'doubles'; }
 function moveHtml(id,t,prev){
   const now=getRanked(t).findIndex(p=>p.id===id)+1, was=prev.indexOf(id)+1;
   if(!was) return '<span class="pv-eq">•</span>';
@@ -1380,7 +1463,7 @@ function printRows(t,list,start,prev){
       <td class="pv-pts" style="color:${PRINT_COLOR[kindOf(t)]}">${getRating(p,t)}</td></tr>`;}).join('');
 }
 function printTable(t,list,start,prev){
-  return `<table><thead><tr><th class="pv-rk">#</th><th class="pv-mv"></th><th>Player</th><th class="pv-c">NTRP</th><th class="pv-c">UTR</th><th class="pv-c">W–L</th><th class="pv-pts">Pts</th></tr></thead>
+  return `<table><thead><tr><th class="pv-rk">#</th><th class="pv-mv"></th><th>Player</th><th class="pv-c">${JR?'Ball':'NTRP'}</th><th class="pv-c">UTR</th><th class="pv-c">W–L</th><th class="pv-pts">Pts</th></tr></thead>
     <tbody>${printRows(t,list,start,prev)}</tbody></table>`;
 }
 function printPairs(t){
@@ -1456,11 +1539,18 @@ function buildStandings(layout){
   const total=layout.mixedOwnPage?3:2;
   const asOf=new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
   const weekAgo=Date.now()-7*DAY; const prev={}; LADDER_ORDER.forEach(t=>prev[t]=ranksAsOf(t,weekAgo));
-  const head=n=>`<header class="pv-header"><div><div class="pv-club">GOLD RIVER SPORTS CLUB</div><h1>Tennis Ladder Standings</h1><div class="pv-asof">As of ${esc(asOf)} · Page ${n} of ${total}</div></div></header>`;
+  const head=n=>`<header class="pv-header"><div><div class="pv-club">GOLD RIVER SPORTS CLUB</div><h1>${JR?'Junior Tennis Ladder Standings':'Tennis Ladder Standings'}</h1><div class="pv-asof">As of ${esc(asOf)} · Page ${n} of ${total}</div></div></header>`;
   const foot=`<footer class="pv-footer"><img src="qr-signup.png" alt="">
     <div class="pv-how"><b>How it works:</b> Win +${WIN} · Loss ${LOSS} · Challenge up to 4 spots above you · Play within ${CHALLENGE_DAYS} days · Scores confirmed in the app within ${CONFIRM_HOURS} hours · After ${DECAY_GRACE} days without a match, −${DECAY_POINTS} points a week.<br><b>Not on the ladder yet?</b> Scan the code to sign up. Live standings, challenges and scores are in the ladder app.</div>
     <div class="pv-key"><span class="pv-up">▲</span> moved up · <span class="pv-dn">▼</span> moved down<br>in the last 7 days · <span class="pv-eq">•</span> new<br>Highlights: last 30 days<br><span class="pv-tag pv-new">NEW</span> joined recently</div></footer>`;
   const page=(n,body)=>`<div class="pv-page">${head(n)}<div class="pv-cols">${body}</div>${foot}</div>`;
+  if(JR){ // page 1: Orange, Green, 14U · page 2: 16U, 18U (+ doubles, or doubles on its own page)
+    const d=t=>printDraw(t,prev[t]);
+    const q1=`${d('o10')}${d('g12')}${d('b14')}${d('g14')}${layout.highlights?printHighlights():''}`;
+    const jd=printDraw('jd',prev.jd,true);
+    const q2=`${d('b16')}${d('g16')}${d('b18')}${d('g18')}${layout.mixedOwnPage?'':jd}`;
+    return page(1,q1)+page(2,q2)+(layout.mixedOwnPage?page(3,jd):'');
+  }
   const p1=`${printDraw('ms',prev.ms)}${printDraw('ws',prev.ws)}${layout.highlights?printHighlights():''}`;
   const mx=printDraw('mx',prev.mx,true);
   const p2=`${printDraw('md',prev.md)}${printDraw('wd',prev.wd)}${layout.mixedOwnPage?'':mx}`;
@@ -1529,3 +1619,188 @@ syncThemeUI();
 function switchInstall(which,el){ document.querySelectorAll('#installTabs .tab').forEach(t=>t.classList.remove('active')); el.classList.add('active'); $('installIOS').hidden=which!=='ios'; $('installAndroid').hidden=which!=='android'; }
 let toastTimer;
 function toast(msg){ const t=$('toast'); t.textContent=msg; t.style.opacity='1'; t.style.transform='translateX(-50%) translateY(0)'; clearTimeout(toastTimer); toastTimer=setTimeout(()=>{ t.style.opacity='0'; t.style.transform='translateX(-50%) translateY(10px)'; },2600); }
+
+
+// ═══════════════════════════════════════════
+//  JUNIOR LADDER (only used when JR)
+// ═══════════════════════════════════════════
+// Parents sign in; jr_families/{parent email}.kids lists the children they manage. The security rules
+// read that list, so keep it in step whenever a child's parent emails change.
+async function syncFamilies(kidId,before,after){
+  if(!JR) return;
+  const b=new Set((before||[]).filter(Boolean).map(norm)), a=new Set((after||[]).filter(Boolean).map(norm));
+  for(const e of b) if(!a.has(e)) await db.collection('jr_families').doc(e).set({kids:FieldValue.arrayRemove(kidId)},{merge:true});
+  for(const e of a) await db.collection('jr_families').doc(e).set({email:e,kids:FieldValue.arrayUnion(kidId)},{merge:true});
+}
+const jrKidId=name=>'k-'+name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,30)+'-'+Math.random().toString(36).slice(2,6);
+const ageIn=by=>by?SEASON_YEAR-Number(by):null;
+function divOptions(sel){ return JR_DIVISIONS.map(d=>`<option value="${d}"${d===sel?' selected':''}>${LADDERS[d].label}</option>`).join(''); }
+function ballOptions(sel){ return BALLS.map(b=>`<option${b===sel?' selected':''}>${b}</option>`).join(''); }
+function jrAdminFields(p){
+  return `<div class="form-row">
+      <div class="form-group"><label class="form-label">Division</label><select id="admDiv">${divOptions(p.division)}</select></div>
+      <div class="form-group"><label class="form-label">Ball</label><select id="admBall">${ballOptions(p.ntrp)}</select></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Parent email (login)</label><input type="email" id="admParent" value="${esc(p.parent||'')}"></div>
+      <div class="form-group"><label class="form-label">2nd parent email</label><input type="email" id="admParent2" value="${esc(p.parent2||'')}" placeholder="Optional"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Parent name</label><input type="text" id="admParentName" value="${esc(p.parentName||'')}"></div>
+      <div class="form-group"><label class="form-label">Parent phone</label><input type="tel" id="admPhone" value="${esc(p.phone||'')}"></div>
+    </div>
+    <label style="display:flex;gap:8px;align-items:center;font-size:13.5px;margin-bottom:12px"><input type="checkbox" id="admDoubles" style="width:auto" ${p.doubles?'checked':''}> Junior Doubles</label>`;
+}
+async function jrSavePlayer(id,num){
+  const p=getPlayer(id); if(!p) return;
+  const parent=norm($('admParent').value), parent2=norm($('admParent2').value);
+  if(!isPaper(p)&&!/^\S+@\S+\.\S+$/.test(parent)){ toast('Enter a parent email — it’s their login'); return; }
+  try{
+    await db.collection(COL('players')).doc(id).update({
+      baseSingles:num($('admBaseS').value)??1200, baseDoubles:num($('admBaseD').value)??1200,
+      utrSingles:num($('admUtrS').value), utrDoubles:num($('admUtrD').value), billingStart:$('admBilling').value||'',
+      division:$('admDiv').value, ntrp:$('admBall').value, doubles:$('admDoubles').checked,
+      parent, parent2, email:parent, parentName:$('admParentName').value.trim().slice(0,80), phone:$('admPhone').value.trim().slice(0,30)
+    });
+    if(!isPaper(p)) await syncFamilies(id,[p.parent,p.parent2],[parent,parent2]);
+    toast('Saved'); closeSheet('playerSheet');
+  }catch(e){ toast('Could not save: '+e.message); }
+}
+function jrRenderSignups(){
+  const list=state.signups.filter(s=>s.status==='pending').sort((a,b)=>(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0));
+  $('signupList').innerHTML=list.length?list.map(s=>{
+    const parent=norm(s.email), exists=state.players.some(p=>p.parent===parent&&norm(p.name)===norm(s.name));
+    const div=suggestDivision(s.birthYear,s.gender,s.ball), age=ageIn(s.birthYear);
+    return `<div class="match-card" style="border-bottom:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><div style="font-weight:600;font-size:15px">${esc(s.name)}</div><div style="font-size:11px;color:var(--fg2)">${s.createdAt?new Date(s.createdAt.seconds*1000).toLocaleDateString():''}</div></div>
+      <div style="font-size:13px;color:var(--fg2);margin-top:2px;line-height:1.55">Born ${esc(s.birthYear||'?')}${age?` (${age} in ${SEASON_YEAR})`:''} · ${s.gender==='F'?'Girl':'Boy'} · ${esc(s.ball||'?')} ball${s.utr?' · UTR '+esc(s.utr):''} · Doubles: ${s.doubles?'yes':'no'}<br>
+        Parent: <b style="color:var(--fg)">${esc(s.parentName||'')}</b> · ${esc(s.email)} · ${esc(s.phone||'')}${s.parent2?'<br>2nd parent: '+esc(s.parent2):''}${s.program?'<br>Program: '+esc(s.program):''}${s.avail?'<br>Available: '+esc(s.avail):''}<br>
+        Goes into: <b style="color:var(--fg)">${LADDERS[div].label}</b> <span style="font-size:12px">(change any time from their profile)</span></div>
+      ${exists?`<div style="font-size:12px;color:var(--gold);margin-top:6px">Already on the ladder — approving will update their record.</div>`:''}
+      <div class="match-actions"><button class="btn btn-green btn-sm" onclick="approveSignup('${s.id}')">Approve &amp; add</button><button class="btn btn-secondary btn-sm" onclick="declineSignup('${s.id}')">Decline</button>${s.phone?`<a class="btn btn-secondary btn-sm" href="sms:${esc(s.phone.replace(/\D/g,''))}">Text parent</a>`:''}</div>
+    </div>`;
+  }).join(''):`<div class="empty"><div class="empty-icon">📬</div><div class="empty-title">No pending sign-ups</div><div class="empty-sub">Parents’ submissions from the junior sign-up page appear here.</div></div>`;
+}
+async function jrApproveSignup(s){
+  const parent=norm(s.email), parent2=norm(s.parent2||'');
+  const existing=state.players.find(p=>p.parent===parent&&norm(p.name)===norm(s.name));
+  const id=existing?existing.id:jrKidId(s.name);
+  const doc={
+    name:s.name.trim(), initials:initialsOf(s.name), email:parent, parent, parent2, parentName:(s.parentName||'').trim(), phone:s.phone||'',
+    ntrp:s.ball||'', gender:s.gender==='F'?'F':'M', birthYear:s.birthYear||'', division:(existing&&existing.division)||suggestDivision(s.birthYear,s.gender,s.ball),
+    doubles:!!s.doubles, program:s.program||'', utrSingles:s.utr?Number(s.utr):(existing?existing.utrSingles??null:null), utrDoubles:existing?existing.utrDoubles??null:null,
+    availability:s.avail||(existing&&existing.availability)||'', active:true, billingStart:(existing&&existing.billingStart)||SEASON_START,
+    baseSingles:existing?existing.baseSingles??1200:1200, baseDoubles:existing?existing.baseDoubles??1200:1200,
+    createdAt:(existing&&existing.createdAt)||FieldValue.serverTimestamp(), approvedBy:state.authEmail
+  };
+  try{
+    await db.collection(COL('players')).doc(id).set(doc,{merge:true});
+    await syncFamilies(id,existing?[existing.parent,existing.parent2]:[],[parent,parent2]);
+    await db.collection(COL('signups')).doc(s.id).update({status:'approved',approvedAt:FieldValue.serverTimestamp(),playerId:id});
+    toast(`${doc.name} added to ${LADDERS[doc.division].label} ✓`);
+    setTimeout(()=>openWelcome(id),350);
+  }catch(e){ toast('Could not approve: '+e.message); }
+}
+function jrSuggest(){ const d=suggestDivision($('jrBirth').value,$('jrGender').value,$('jrBall').value); if(d) $('jrDiv').value=d; }
+function jrTogglePaper(){ const on=$('jrPaper').checked; $('jrParentLabel').textContent=on?'Parent email (optional)':'Parent email (their login)'; $('jrPaperNote').hidden=!on; }
+async function jrAddPlayer(){
+  const name=$('jrName').value.trim(), paper=$('jrPaper').checked, parent=norm($('jrParent').value), parent2=norm($('jrParent2').value);
+  if(!name){ toast('Enter the player’s name'); return; }
+  if(paper){ if(!$('jrPhone').value.trim()){ toast('Add a parent phone so families can call'); return; } }
+  else if(!/^\S+@\S+\.\S+$/.test(parent)){ toast('Enter a parent email — it’s their login'); return; }
+  if(parent2&&!/^\S+@\S+\.\S+$/.test(parent2)){ toast('The 2nd parent email doesn’t look right'); return; }
+  const id=paper?'paper-'+jrKidId(name).slice(2):jrKidId(name);
+  const by=$('jrBirth').value.trim(), base=1200;
+  const doc={name,initials:initialsOf(name),email:parent,parent:paper?(parent||''):parent,parent2,parentName:$('jrParentName').value.trim(),phone:$('jrPhone').value.trim(),paper,
+    ntrp:$('jrBall').value,gender:$('jrGender').value,birthYear:by,division:$('jrDiv').value,doubles:$('jrDoubles').checked,program:'',
+    utrSingles:parseFloat($('jrUTRS').value)||null,utrDoubles:parseFloat($('jrUTRD').value)||null,active:true,baseSingles:base,baseDoubles:base,
+    billingStart:SEASON_START,availability:'',createdAt:FieldValue.serverTimestamp(),approvedBy:state.authEmail};
+  try{
+    await db.collection(COL('players')).doc(id).set(doc);
+    if(!paper) await syncFamilies(id,[],[parent,parent2]);
+    ['jrName','jrParent','jrParent2','jrParentName','jrPhone','jrBirth','jrUTRS','jrUTRD'].forEach(x=>$(x).value='');
+    $('jrPaper').checked=false; jrTogglePaper();
+    toast(`${name} added to ${LADDERS[doc.division].label} ✓`);
+    if(!paper) setTimeout(()=>openWelcome(id),350);
+  }catch(e){ toast('Could not add: '+e.message); }
+}
+function jrWelcomeText(p){
+  const first=(p.parentName||'').split(' ')[0]||'there', kid=(p.name||'').split(' ')[0];
+  const draws=playerLadders(p).map(t=>LADDERS[t].label).join(' and ');
+  return `Hi ${first}, ${kid} is in! Welcome to the Gold River Junior Tennis Ladder${draws?' ('+draws+')':''}.\n\n`+
+    `You manage ${kid}'s ladder account from your phone. Getting set up takes 2 minutes:\n\n`+setupSteps(p)+`\n\n`+
+    `Once you're in, tap the ? at the top of the app for the full rules and FAQ. Play is free until the season starts ${seasonLabel()}.\n\n— Jordan`;
+}
+function jrWelcomeEmail(p){
+  const first=(p.parentName||'').split(' ')[0]||'there', kid=(p.name||'').split(' ')[0];
+  const draws=playerLadders(p).map(t=>LADDERS[t].label);
+  const H=t=>`\n\n━━ ${t.toUpperCase()} ━━\n`;
+  const days=state.events.filter(e=>e.type==='matchplay'&&(e.date||'')>=today()).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,4);
+  return `Hi ${first},\n\n`+
+  `${kid} is officially on the Gold River Junior Tennis Ladder — welcome! `+
+  `${draws.length?`${kid} is entered in ${draws.length===1?draws[0]:draws.slice(0,-1).join(', ')+' and '+draws.slice(-1)}. `:''}`+
+  `Parents run the ladder account: you'll set up matches, enter scores and sign ${kid} up for Matchplay Days, all from the ladder app on your phone. Here's how to get set up and how it works.`+
+  H('Get set up (2 minutes)')+setupSteps(p)+
+  `\n\nIf you have more than one child on the ladder, they're all under your email. Switch between them with the "Playing as" bar at the top of the app.`+
+  H('How the ladder works')+
+  `• Each division is its own ladder: Orange Ball 10U, Green Ball 12U, and Boys and Girls 14U, 16U and 18U, plus an optional Junior Doubles ladder. Divisions are set by age in ${SEASON_YEAR} and ball color, and Jordan can move a player up or down.\n`+
+  `• Everyone starts at 1200 points. Win a match: +${WIN} points. Lose: ${LOSS} points. Rankings are simply who has the most points.`+
+  H('Two ways to play')+
+  `MATCHPLAY DAYS — Organized match days run by our junior staff. Sign ${kid} up on the Events tab; we pair players by ranking and enter the results, so they count right away.\n\n`+
+  `CHALLENGES — Between Matchplay Days, ${kid} can challenge anyone up to 4 spots above them in the same division (anyone in the division during the first ${OPEN_DAYS/7} weeks). You send the challenge from the Play tab and text the other parent to pick a time, then book a court through Club Automation (courts open 48 hours ahead). Challenges are played within ${CHALLENGE_DAYS} days; if it rains, tap 🌧️ Rained out on the challenge to reschedule once or cancel with no penalty.`+
+  H('Scores')+
+  `• After a challenge match, either parent enters the score on the Play tab.\n`+
+  `• The other family gets a Confirm / Dispute prompt on their Home screen. If they don't respond, it counts automatically after ${CONFIRM_HOURS} hours.\n`+
+  `• The challenger brings a new can of balls (the right color for the division) and the winner keeps them.`+
+  H('Contact and privacy')+
+  `Other ladder families see your phone number and email (not ${kid}'s), so you can arrange matches parent to parent. Only parents and guardians sign in. Players don't have their own accounts or messaging. Update your number under Profile.`+
+  (days.length?H('Upcoming Matchplay Days')+days.map(e=>`• ${e.title} — ${fmtWhen(e)}`).join('\n'):'')+
+  H('Cost')+
+  `The junior ladder is free until the season starts ${seasonLabel()}. After that it's $10 a month per player, billed as a house charge on your member account. You can cancel any time by letting me know.`+
+  `\n\nAny questions, just reply to this email or find me at the club. See you on the courts!\n\n`+
+  `Jordan Boyls\nDirector of Tennis, Gold River Sports Club\njpboyls@gmail.com`;
+}
+function jrRulesHtml(seasonDay){
+  const q=(title,body,open)=>`<details${open?' open':''}><summary>${title}</summary><div class="rules-ans">${body}</div></details>`;
+  const sec=(title,items)=>`<div class="rules-sec"><h2>${title}</h2><div class="rules-card">${items.join('')}</div></div>`;
+  const days=state.events.filter(e=>e.type==='matchplay'&&(e.date||'')>=today()).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,6);
+  return `
+  <div class="rules-key">
+    <div><b>+${WIN} / ${LOSS}</b><span>points for a win / loss</span></div>
+    <div><b>${CHALLENGE_DAYS} days</b><span>to play a challenge</span></div>
+    <div><b>${CONFIRM_HOURS} hrs</b><span>to confirm a score</span></div>
+    <div><b>${DECAY_GRACE} days</b><span>before inactivity slide</span></div>
+  </div>
+  ${sec('The basics',[
+    q('Who can join?',`<p>Junior players at Gold River and the Spare Time clubs, from Orange Ball through 18 and under. A parent or guardian signs up with the junior sign-up form and runs the account. Jordan adds the player and sends the parent a welcome with the app link.</p>`,true),
+    q('What are the divisions?',`<p>Each division is its own ladder:</p><ul><li><b>Orange Ball 10U</b> and <b>Green Ball 12U</b> (boys and girls together)</li><li><b>Boys</b> and <b>Girls 14U, 16U and 18U</b> (yellow ball)</li><li><b>Junior Doubles</b>, open to any player who opts in, with any partner</li></ul><p>Players are placed by their age in ${SEASON_YEAR} and the ball color they play with. Jordan can move a player up or down when that's a better fit.</p>`),
+    q('How are rankings decided?',`<p>Everyone starts at <b>1200 points</b> in their division. Rankings are simply who has the most points.</p><ul><li>Win a match: <b>+${WIN} points</b></li><li>Lose a match: <b>${LOSS} points</b></li></ul><p>Jordan may adjust a starting point if a player is clearly placed too high or low.</p>`),
+    q('Why do parents sign in instead of players?',`<p>Only parents and guardians have accounts. Players don't sign in, post or message anyone. Other families see the parent's phone and email, so every match is arranged parent to parent. One login covers all your children: switch between them with the <b>Playing as</b> bar at the top of the app.</p>`),
+    q('Can we play without the app?',`<p>Yes. Tell Jordan when you sign up and your child is added as a 📞 paper player. Other families will call or text you to set up matches, and the standings are posted on the junior bulletin board. Turn in a <b>Match Score Card</b> from the front desk after each match.</p>`),
+  ])}
+  ${sec('Matchplay Days',[
+    q('What is a Matchplay Day?',`<p>An organized day of ladder matches run by our junior staff. Sign up on the <b>Events</b> tab. We pair players by ranking in each division and enter the results, so they count right away. No scheduling or score entry needed from parents.</p>`),
+    q('When are they?',days.length?`<p>${days.map(e=>`<b>${esc(e.title)}</b> — ${esc(fmtWhen(e))}`).join('<br>')}</p><p>Details and sign-up are on the <b>Events</b> tab.</p>`:`<p>Dates will be posted on the <b>Events</b> tab.</p>`),
+  ])}
+  ${sec('Challenges & matches',[
+    q('Who can my child challenge?',`<p>Anyone up to <b>4 spots above them</b> in the same division. The Play tab only lists the players they’re allowed to challenge. New players can challenge <b>anyone in their division</b> for their first ${OPEN_DAYS/7} weeks, and so can everyone during the free pre-season.</p>`),
+    q('How do we set up a challenge match?',`<p>Send the challenge from the <b>Play</b> tab, then text the other parent (the <b>Text parent</b> button) to pick a time. Book a court through Club Automation, which opens <b>48 hours in advance</b>. The match has to be played within <b>${CHALLENGE_DAYS} days</b>.</p>`),
+    q('What if we get rained out?',`<p>Tap <b>🌧️ Rained out</b> on the accepted challenge. Either family can <b>reschedule</b> once, which adds ${RAIN_DAYS} days, or <b>cancel</b> with no penalty and no effect on the rankings.</p>`),
+    q('What’s the match format?',`<p>Unless Jordan sets a shorter format for a division, best of 3 sets with a 10-point tiebreak in place of a third set. Matchplay Day formats are posted with each event.</p>`),
+    q('Who brings the balls?',`<p><b>The challenger brings a new can</b> in the right ball color for the division, and the winner keeps them. In doubles, the challenging team brings the can.</p>`),
+    q('How do we record a score?',`<p>Either parent goes to <b>Play → Submit Match Score</b>. The other family confirms it on their Home screen; if they don’t respond within <b>${CONFIRM_HOURS} hours</b>, it counts automatically. If a score is wrong, tap <b>Dispute</b> and Jordan will sort it out.</p>`),
+  ])}
+  ${sec('Staying active',[
+    q('What happens if my child doesn’t play for a while?',`<p>Starting <b>${seasonDay}</b>, after <b>${DECAY_GRACE} days</b> without a confirmed match a player loses <b>${DECAY_POINTS} points a week</b> until they play again (at most ${DECAY_CAP} points per idle stretch). Matchplay Days count. The app gives you a heads-up 10 days ahead.</p>`),
+    q('Injured, busy with school, or away?',`<p>Let Jordan know. He can mark your child inactive so they don’t lose points, and bring them back when they’re ready.</p>`),
+  ])}
+  ${sec('Fees',[
+    q('How much does it cost?',`<p>Free until <b>${seasonDay}</b>, when the season starts. After that it’s <b>$10 a month per player</b>, billed as a house charge on the parent’s member account.</p>`),
+    q('How do we cancel?',`<p>Let Jordan know. Billing stops at the end of that month.</p>`),
+  ])}
+  ${sec('Using the app',[
+    q('How do I sign in?',`<p>Enter the parent email you signed up with and tap <b>Email me a sign-in link</b>. On iPhone, if you opened the app from your home screen, press and hold the link in the email, choose <b>Copy Link</b>, and paste it into the box on the sign-in screen. You stay signed in after that.</p>`),
+    q('I have more than one child on the ladder',`<p>They’re all under your email. Use the <b>Playing as</b> bar at the top to switch between them; challenges, scores and sign-ups apply to whoever is selected.</p>`),
+    q('Who do I contact with questions?',`<p>Jordan Boyls, Director of Tennis — <span style="user-select:all;color:var(--accent-hi);font-weight:600">jpboyls@gmail.com</span></p>`),
+  ])}`;
+}
