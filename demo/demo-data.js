@@ -219,6 +219,12 @@ for (let i = 0; i < 14; i++) {
   chal(near(pool, jordan), jordan, 'ms', 'pending', 20, 'Saw you’re #1 in my range — Saturday morning?');
   const tgt = pool.filter(p => p._skill > jordan._skill)[0] || pool[0];
   chal(jordan, tgt, 'ms', 'accepted', 50, 'Wednesday 7pm on court 3?');
+  // rained out once and rescheduled (shows the rain-out tag and the admin rain-out log)
+  Object.assign(store.challenges['c' + cid], { rainedOut: true, rainBy: tgt._id, rainAt: ts(NOW - 26 * 3600000), playBy: NOW - 50 * 3600000 + 14 * DAY, date: ds(T0 + 3 * DAY) });
+  // two more rain-outs elsewhere on the ladder: one rescheduled, one cancelled
+  { const wp = ranked.filter(p => inDraw(p, 'ws') && p.active && !p.paper); const a = wp[3], b = near(wp, a);
+    chal(a, b, 'ws', 'accepted', 70, 'Thursday 6:30?'); Object.assign(store.challenges['c' + cid], { rainedOut: true, rainBy: b._id, rainAt: ts(NOW - 40 * 3600000), playBy: NOW - 70 * 3600000 + 14 * DAY });
+    const x = wp[9], y = near(wp, x); chal(x, y, 'ws', 'rainout', 60, ''); Object.assign(store.challenges['c' + cid], { rainBy: x._id, rainAt: ts(NOW - 20 * 3600000) }); }
   // one expired, for the admin "needs attention" list
   const x = pick(pool), y = near(pool, x); chal(x, y, 'ms', 'accepted', 9 * 24 + 5, ''); }
 for (let i = 0; i < 40; i++) { const t = pick(['ms', 'ws']); const pool = ranked.filter(p => inDraw(p, t)); const a = pick(pool), b = near(pool, a); put('challenges', 'c' + (++cid), { from: a._id, to: b._id, ladder: t, date: '', message: '', status: 'played', createdAt: ts(T0 - (10 + Math.floor(rnd() * 48)) * DAY) }); }

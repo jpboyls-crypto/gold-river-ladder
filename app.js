@@ -377,12 +377,12 @@ function renderHome(){
             ${c.message?`<div style="font-size:13px;color:var(--fg2);margin-top:3px;font-style:italic">"${esc(c.message)}"</div>`:''}
           </div>
         </div>
-        <div style="margin-top:8px">${c.status==='accepted'&&!isExpired(c)?'<span class="chip chip-green">Accepted</span> ':''}${clockLabel(c)}</div>
+        <div style="margin-top:8px">${c.status==='accepted'&&!isExpired(c)?'<span class="chip chip-green">Accepted</span> ':''}${c.rainedOut?`<span class="chip chip-blue">🌧️ Rained out · new play-by ${fmtShort(c.playBy)}</span> `:''}${clockLabel(c)}</div>
         ${isExpired(c)?'':incoming&&c.status==='pending'?`<div class="match-actions">
           <button class="btn btn-green btn-sm" onclick="respondChallenge('${c.id}','accepted')">Accept</button>
           <button class="btn btn-secondary btn-sm" onclick="respondChallenge('${c.id}','declined')">Decline</button>
           ${other&&other.phone?`<a class="btn btn-secondary btn-sm" href="sms:${esc(other.phone.replace(/\\D/g,''))}">Text</a>`:''}
-        </div>`:`<div class="match-actions">${c.status==='accepted'?bookBtn(c.date):''}${c.from===m.id?`<button class="btn btn-secondary btn-sm" onclick="cancelChallenge('${c.id}')">Withdraw</button>`:''}${other&&other.phone?`<a class="btn btn-secondary btn-sm" href="sms:${esc(other.phone.replace(/\\D/g,''))}">Text ${esc(other.name.split(' ')[0])}</a>`:''}</div>`}
+        </div>`:`<div class="match-actions">${c.status==='accepted'?bookBtn(c.date):''}${c.status==='accepted'?`<button class="btn btn-secondary btn-sm" onclick="toggleRain('${c.id}')">🌧️ Rained out</button>`:''}${c.from===m.id?`<button class="btn btn-secondary btn-sm" onclick="cancelChallenge('${c.id}')">Withdraw</button>`:''}${other&&other.phone?`<a class="btn btn-secondary btn-sm" href="sms:${esc(other.phone.replace(/\\D/g,''))}">Text ${esc(other.name.split(' ')[0])}</a>`:''}</div>${c.status==='accepted'?rainPanel(c):''}`}
       </div>`;
     }).join('');
   }
@@ -591,7 +591,8 @@ function populateOppPartner(){
   if([...oSel.options].some(o=>o.value===keep2)) oSel.value=keep2;
 }
 // ── challenge clock ──
-function challengeDeadline(c){ return tsMs(c.createdAt)+CHALLENGE_DAYS*DAY; }
+function challengeDeadline(c){ return c.playBy?c.playBy:tsMs(c.createdAt)+CHALLENGE_DAYS*DAY; }
+const RAIN_DAYS = 7;   // a rain-out adds this many days to the challenge clock (once per challenge)
 function isOpenChallenge(c){ return c.status==='pending'||c.status==='accepted'; }
 function isExpired(c){ return isOpenChallenge(c)&&Date.now()>challengeDeadline(c); }
 function clockLabel(c){
@@ -618,6 +619,36 @@ async function confirmMatch(id,ok){
 async function respondChallenge(cid,status){
   try{ await db.collection('challenges').doc(cid).update({status,respondedAt:FieldValue.serverTimestamp()}); toast(status==='accepted'?'Challenge accepted! Set up a time by text.':'Challenge declined.'); }
   catch(e){ toast('Could not update: '+e.message); }
+}
+// ── rain-outs ──
+function rainNewDeadline(c){ return Math.max(challengeDeadline(c),Date.now())+RAIN_DAYS*DAY; }
+function rainPanel(c){
+  const again=!!c.rainedOut;
+  return `<div class="rain-panel" id="rain-${c.id}" hidden>
+    <div style="font-weight:600;font-size:13.5px;margin-bottom:6px">🌧️ Rained out? Pick one:</div>
+    ${again?`<div style="font-size:12.5px;color:var(--fg2);margin-bottom:8px">This match has already been rescheduled once. Play by ${fmtShort(c.playBy)}, or cancel it below.</div>`
+    :`<label class="form-label" for="rainDate-${c.id}" style="margin-top:0">New date (optional)</label>
+      <input type="date" id="rainDate-${c.id}" min="${today()}" value="">
+      <div class="match-actions" style="margin-top:8px"><button class="btn btn-primary btn-sm" onclick="rainReschedule('${c.id}')">Reschedule · play by ${fmtShort(rainNewDeadline(c))}</button></div>`}
+    <div class="match-actions" style="margin-top:6px"><button class="btn btn-secondary btn-sm" id="rainCancel-${c.id}" onclick="rainCancel('${c.id}')">Cancel match · no penalty</button></div>
+    <div style="font-size:11.5px;color:var(--fg2);margin-top:8px;line-height:1.45">Rescheduling adds ${RAIN_DAYS} days to the clock (once per challenge). Cancelling closes the challenge with no effect on anyone's ranking; either of you can send a new one any time.</div>
+  </div>`;
+}
+function toggleRain(cid){ const el=$('rain-'+cid); if(el) el.hidden=!el.hidden; }
+async function rainReschedule(cid){
+  const c=state.challenges.find(x=>x.id===cid); if(!c||c.rainedOut) return;
+  const d=($('rainDate-'+cid)||{}).value||'';
+  const upd={rainedOut:true,rainBy:state.email,rainAt:FieldValue.serverTimestamp(),playBy:rainNewDeadline(c)};
+  if(d) upd.date=d;
+  try{ await db.collection('challenges').doc(cid).update(upd); toast(`Rescheduled 🌧️ New play-by date: ${fmtShort(upd.playBy)}`); }
+  catch(e){ toast('Could not reschedule: '+e.message); }
+}
+let pendingRainCancel=null;
+async function rainCancel(cid){
+  if(pendingRainCancel!==cid){ pendingRainCancel=cid; const b=$('rainCancel-'+cid); if(b) b.textContent='Tap again to cancel the match'; setTimeout(()=>{ if(pendingRainCancel===cid){ pendingRainCancel=null; const b2=$('rainCancel-'+cid); if(b2) b2.textContent='Cancel match · no penalty'; } },4000); return; }
+  pendingRainCancel=null;
+  try{ await db.collection('challenges').doc(cid).update({status:'rainout',rainBy:state.email,rainAt:FieldValue.serverTimestamp()}); toast('Match cancelled for rain. No penalty.'); }
+  catch(e){ toast('Could not cancel: '+e.message); }
 }
 async function cancelChallenge(cid){
   try{ await db.collection('challenges').doc(cid).delete(); toast('Challenge withdrawn'); }catch(e){ toast('Could not withdraw: '+e.message); }
@@ -815,8 +846,17 @@ function renderAdminMatches(){
         <div style="font-weight:600;font-size:14px;margin-top:6px">${esc(displayName(c.from))} challenged ${esc(displayName(c.to))}</div>
         <div style="font-size:12.5px;color:var(--fg2);margin-top:2px">${esc(ladderLabel(c.ladder))} \u00b7 status: ${esc(c.status)}</div>
         <div class="match-actions"><button class="btn btn-primary btn-sm" onclick="awardForfeit('${c.id}')">Forfeit win to ${esc(displayName(c.from).split(' ')[0])}</button><button class="btn btn-secondary btn-sm" onclick="voidChallenge('${c.id}')">Void</button></div></div>`).join('')+
-      `</div><div class="section-head" style="padding-top:0">All matches</div>`;
+      `</div>`;
   }
+  const since=Date.now()-30*DAY;
+  const rains=state.challenges.filter(c=>(c.rainedOut||c.status==='rainout')&&tsMs(c.rainAt||c.createdAt)>=since).sort((a,b)=>tsMs(b.rainAt)-tsMs(a.rainAt));
+  if(rains.length){
+    att+=`<div class="section-head" style="padding-top:0">🌧️ Rain-outs, last 30 days <span style="font-weight:400;text-transform:none;letter-spacing:0">(for your info, nothing to do)</span></div><div class="card" style="margin-bottom:16px">`+
+      rains.map(c=>`<div class="match-card" style="border-bottom:1px solid var(--border)">
+        <div style="font-weight:600;font-size:14px">${esc(displayName(c.from))} vs ${esc(displayName(c.to))}</div>
+        <div style="font-size:12.5px;color:var(--fg2);margin-top:2px">${esc(ladderLabel(c.ladder))} \u00b7 ${c.status==='rainout'?'<span class="chip chip-gold">Cancelled</span>':'<span class="chip chip-blue">Rescheduled \u00b7 play by '+fmtShort(c.playBy)+'</span>'} \u00b7 by ${esc(displayName(c.rainBy))}${c.rainAt?' on '+fmtShort(tsMs(c.rainAt)):''}</div></div>`).join('')+`</div>`;
+  }
+  if(att) att+=`<div class="section-head" style="padding-top:0">All matches</div>`;
   renderMatchBadge();
   $('adminMatchList').innerHTML=att+'<div class="card">'+(state.matches.length?state.matches.map(m=>{const st=matchState(m);return `<div class="match-card" style="border-bottom:1px solid var(--border)"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <div style="min-width:0"><div style="font-weight:600;font-size:14px">${esc(displayName(m.p1))}${m.p1Partner?' &amp; '+esc(displayName(m.p1Partner)):''} vs ${esc(displayName(m.p2))}${m.p2Partner?' &amp; '+esc(displayName(m.p2Partner)):''}</div>
@@ -930,6 +970,7 @@ function welcomeEmail(p){
   H('Challenges')+
   `• You can challenge anyone up to 4 spots above you in the same draw. New members can challenge anyone in their draw for their first ${OPEN_DAYS/7} weeks${seasonStarted()?'':' — and right now, during the free pre-season, everyone can'}.\n`+
   `• Once a challenge is sent you have ${CHALLENGE_DAYS} days to play it. Text each other to pick a time, then book a court.\n`+
+  `• Rained out? Tap 🌧️ Rained out on the challenge to reschedule (adds ${RAIN_DAYS} days, once) or cancel with no penalty.\n`+
   `• Matches are best of 3 sets, with a 10-point tiebreak in place of a third set.`+
   H('Scores')+
   `• Either player enters the score on the Play tab (for doubles, pick both partners).\n`+
@@ -1283,7 +1324,8 @@ function renderRules(){
   ])}
   ${sec('Challenges & matches',[
     q('Who can I challenge?',`<p>Anyone up to <b>4 spots above you</b> in the same draw. The Play tab only lists the people you’re allowed to challenge.</p><p><b>New members</b> can challenge <b>anyone in their draw</b> for their first ${OPEN_DAYS/7} weeks, to find their level quickly. Everyone has this open window during the free pre-season and the first ${OPEN_DAYS/7} weeks of the season.</p>`),
-    q('How long do we have to play?',`<p><b>${CHALLENGE_DAYS} days</b> from when the challenge is sent. Each challenge on your Home screen shows how much time is left. If it isn’t played in time, Jordan can award the challenger a forfeit win or void the challenge.</p><p>If weather, injury or travel gets in the way, message Jordan before the ${CHALLENGE_DAYS} days are up.</p>`),
+    q('How long do we have to play?',`<p><b>${CHALLENGE_DAYS} days</b> from when the challenge is sent. Each challenge on your Home screen shows how much time is left. If it isn’t played in time, Jordan can award the challenger a forfeit win or void the challenge.</p><p>If injury or travel gets in the way, message Jordan before the ${CHALLENGE_DAYS} days are up. For rain, use the 🌧️ Rained out button (below).</p>`),
+    q('What if we get rained out?',`<p>Tap <b>🌧️ Rained out</b> on the accepted challenge (Home screen). Either player can do it, and you get two choices:</p><p><b>Reschedule</b> adds ${RAIN_DAYS} days to the play-by date (you can enter the new date too). Each challenge can be rescheduled once.<br><b>Cancel</b> closes the challenge with no penalty and no effect on the rankings. Either of you can send a new challenge any time.</p><p>Courts are booked through Club Automation as usual. Jordan sees every rain-out, so there's no need to message him.</p>`),
     q('Can I decline a challenge?',`<p>Yes, if you can’t play — let the challenger know why. Jordan may treat repeated declines as forfeits.</p>`),
     q('How do we book a court?',`<p>Through Club Automation, the same way you always do. Courts can be booked <b>up to 48 hours in advance</b>.</p><p>Tap <b>Book a court</b> on the Play tab, or on an accepted challenge to open the booking page on your proposed date. If that date is more than 48 hours away, agree on the time with your opponent now and book once it opens up.</p>`),
     q('What’s the match format?',`<p>Best of 3 sets, with a 10-point tiebreak in place of a third set.</p>`),

@@ -46,10 +46,17 @@ service cloud.firestore {
     match /challenges/{cid} {
       allow read: if canRead();
       allow create: if isMember() && request.resource.data.from == email() && request.resource.data.status == 'pending';
-      // recipient or sender may change status; nothing else changes
+      // recipient or sender may change status (incl. 'rainout' = cancelled for rain, no penalty),
+      // or reschedule once for rain: extends the play-by date by up to 15 days from now
       allow update: if isAdmin()
                     || (isMember() && (resource.data.to == email() || resource.data.from == email())
-                        && onlyKeys(['status', 'respondedAt']));
+                        && (onlyKeys(['status', 'respondedAt', 'rainBy', 'rainAt'])
+                            || (onlyKeys(['rainedOut', 'rainBy', 'rainAt', 'playBy', 'date'])
+                                && resource.data.get('rainedOut', false) != true
+                                && request.resource.data.rainedOut == true
+                                && request.resource.data.rainBy == email()
+                                && request.resource.data.playBy is int
+                                && request.resource.data.playBy <= request.time.toMillis() + 15 * 86400000)));
       allow delete: if isAdmin() || (isMember() && resource.data.from == email());
     }
 
