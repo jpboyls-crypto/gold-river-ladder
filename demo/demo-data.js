@@ -275,7 +275,77 @@ let viewAs = jordan._id;
 try { const v = sessionStorage.getItem('demoViewAs'); if (VIEWERS.some(x => x[0] === v)) viewAs = v; } catch (e) {}
 authUser = { email: viewAs };
 
-window.__demo = { players: players.length, matches: matches.length, store };
+/* ───────────── sample phone notifications (demo only) ─────────────
+   Shows what members would see on their lock screen once push
+   notifications are switched on. Some add the matching item to the
+   data so tapping the notification lands on something real. */
+const meP = players.find(p => p._id === viewAs);
+const nm = p => p.name.split(' ')[0] + ' ' + p.name.split(' ')[1][0] + '.';
+const nextEvent = type => Object.entries(store.events).map(([id, e]) => Object.assign({ id }, e)).filter(e => e.type === type && new Date(e.date + 'T23:59:00').getTime() >= NOW).sort((a, b) => a.date < b.date ? -1 : 1)[0];
+const whenTxt = e => new Date(e.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+const go = (page, after) => () => { const btn = document.getElementById('nav' + page); if (window.goPage && btn) window.goPage(page, btn); if (after) setTimeout(after, 60); window.scrollTo(0, 0); };
+const adminTab = (tab, i) => () => { const t = document.querySelectorAll('#adminTabs .tab')[i]; if (window.switchAdmin && t) window.switchAdmin(tab, t); };
+const rival = (t, who) => near(ranked.filter(p => inDraw(p, t) && p.active && !p.paper && p !== who), who);
+let nSeq = 0;
+const NOTES_FOR = {
+  admin: [
+    () => { const n = 'Sarah Delgado'; docRef('signups', 'live' + (++nSeq)).set({ name: n, email: 'sarah.delgado@demo.club', phone: '(916) 555-2741', draws: ['Singles', 'Doubles'], placement: 'Women’s draws', ntrp: '3.5', utr: null, avail: 'Weekday evenings', consent18: true, consentFee: true, status: 'pending', source: 'web', createdAt: ts(Date.now()) });
+      return { title: 'New ladder sign-up', body: n + ' · 3.5 · Women’s Singles & Doubles. Tap to approve.', act: go('Admin', adminTab('signups', 0)) }; },
+    () => { const d = (Object.values(store.matches).find(m => m.status === 'disputed')) || {}; const a = players.find(p => p._id === (d.confirmedBy || d.p2)) || {};
+      return { title: 'Score disputed', body: (a.name || 'A member') + ' disputed a ' + (d.score || '') + ' result. Tap to review.', act: go('Admin', adminTab('matches', 2)) }; },
+    () => { const e = nextEvent('mixer'); return { title: (e ? e.rsvps.length : 26) + ' going to Friday’s mixer', body: (e ? e.title : 'Ladder Mixer') + ' · 3 new sign-ups today', act: go('Events') }; }
+  ],
+  member: [
+    () => { const t = meP.gender === 'F' ? 'ws' : 'ms'; const r = rival(t, meP);
+      docRef('challenges', 'live' + (++nSeq)).set({ from: r._id, to: meP._id, ladder: t, date: ds(T0 + 3 * DAY), message: 'Saturday 9am? I can book court 4.', status: 'pending', createdAt: ts(Date.now()) });
+      return { title: 'You’ve been challenged 🎾', body: nm(r) + ' challenged you in ' + (t === 'ws' ? 'Women’s' : 'Men’s') + ' Singles. Tap to accept.', act: go('Home') }; },
+    () => { const t = meP.gender === 'F' ? 'wd' : 'md'; const pool = ranked.filter(p => inDraw(p, t) && p.active && !p.paper && p !== meP); const pa = near(pool, meP), o1 = near(pool.filter(p => p !== pa), meP), o2 = near(pool.filter(p => p !== pa && p !== o1), o1);
+      docRef('matches', 'live' + (++nSeq)).set({ p1: o1._id, p1Partner: o2._id, p2: meP._id, p2Partner: pa._id, ladder: t, score: '6-4, 4-6, 10-7', winner: o1._id, date: ds(T0), submittedBy: o1._id, status: 'pending', createdAt: ts(Date.now()) });
+      return { title: 'Confirm your score', body: nm(o1) + ' entered 6-4, 4-6, 10-7 for today’s doubles. Confirm within 48 hours.', act: go('Home') }; },
+    () => { const e = nextEvent('mixer'); return { title: 'Ladder Mixer ' + (e ? whenTxt(e) : 'this Friday'), body: (e ? e.title : 'Ladder Mixer') + ' · 6:30 PM · $10. ' + (e ? e.rsvps.length : 26) + ' members going.', act: go('Events') }; }
+  ],
+  social: [
+    () => { const e = nextEvent('social'); return { title: 'New event posted', body: (e ? e.title + ' · ' + whenTxt(e) : 'Holiday Ladder Party') + '. Member price $15.', act: go('Events') }; },
+    () => { const r = rival('wd', meP.gender === 'F' ? meP : ranked.find(p => p.gender === 'F')) || ranked[0]; return { title: 'New hitting partner post', body: nm(r) + ' is looking for a hit at your level this week.', act: go('Practice') }; },
+    () => { const e = nextEvent('mixer'); return { title: 'Ladder Mixer ' + (e ? whenTxt(e) : 'this Friday'), body: 'Drop-in point play, food and drinks · 6:30 PM · $10.', act: go('Events') }; }
+  ]
+};
+const myNotes = viewAs === jordan._id ? NOTES_FOR.admin : meP && meP.social ? NOTES_FOR.social : NOTES_FOR.member;
+let nIdx = 0, hideT = null;
+function showNote(){
+  let el = document.getElementById('demoToast');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'demoToast'; el.setAttribute('role', 'status');
+    el.innerHTML = '<img src="../icon-192.png" alt=""><div class="dt-main"><div class="dt-head"><span>GOLD RIVER LADDER</span><span>now</span></div><div class="dt-title"></div><div class="dt-body"></div></div>';
+    document.body.appendChild(el);
+    let sy = null;
+    el.addEventListener('touchstart', e => { sy = e.touches[0].clientY; }, { passive: true });
+    el.addEventListener('touchmove', e => { if (sy != null && e.touches[0].clientY - sy < -25) { el.classList.remove('show'); sy = null; } }, { passive: true });
+  }
+  const n = myNotes[nIdx % myNotes.length](); nIdx++;
+  el.querySelector('.dt-title').textContent = n.title; el.querySelector('.dt-body').textContent = n.body;
+  el.onclick = () => { el.classList.remove('show'); n.act(); };
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  clearTimeout(hideT); hideT = setTimeout(() => el.classList.remove('show'), 8000);
+}
+function notesUI(){
+  const row = document.createElement('div'); row.className = 'db-row';
+  row.innerHTML = '<button type="button" id="demoNotify">🔔 Show a notification</button>';
+  document.getElementById('demoBanner').appendChild(row);
+  document.getElementById('demoNotify').addEventListener('click', showNote);
+  const st = document.createElement('style');
+  st.textContent = '#demoNotify{background:#1a1200;color:#f2c14e;border:0;border-radius:6px;padding:4px 10px;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap}' +
+    '#demoToast{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 10px);transform:translate(-50%,-160%);width:min(400px,calc(100% - 20px));display:flex;gap:11px;align-items:flex-start;padding:11px 13px;border-radius:18px;background:rgba(245,245,247,.86);color:#111;-webkit-backdrop-filter:blur(20px) saturate(1.6);backdrop-filter:blur(20px) saturate(1.6);box-shadow:0 10px 32px rgba(0,0,0,.35);z-index:400;cursor:pointer;transition:transform .45s cubic-bezier(.2,.9,.25,1.15)}' +
+    '#demoToast.show{transform:translate(-50%,0)}#demoToast img{width:38px;height:38px;border-radius:9px;flex:none}#demoToast .dt-main{min-width:0;flex:1}' +
+    '#demoToast .dt-head{display:flex;justify-content:space-between;font-size:11px;letter-spacing:.4px;color:#666;margin-bottom:2px}#demoToast .dt-title{font-weight:700;font-size:14.5px;line-height:1.3}#demoToast .dt-body{font-size:13.5px;line-height:1.35;color:#222}' +
+    '@media print{#demoToast,#demoNotify{display:none!important}}';
+  document.head.appendChild(st);
+  // first one shows by itself shortly after the app opens (once per viewer per visit)
+  let seen = false; try { seen = sessionStorage.getItem('demoNoteShown-' + viewAs) === '1'; sessionStorage.setItem('demoNoteShown-' + viewAs, '1'); } catch (e) {}
+  if (!seen) setTimeout(showNote, 5000);
+}
+
+window.__demo = { players: players.length, matches: matches.length, store, showNote };
 
 /* ───────────── banner ───────────── */
 function banner(){
@@ -291,6 +361,7 @@ function banner(){
     '#demoBanner .db-txt{font-weight:500}#demoBanner label{font-weight:700;white-space:nowrap}#demoBanner select{width:auto;max-width:210px;padding:3px 8px;font-size:12.5px;background:#fff7dc;color:#1a1200;border:1px solid #c9a23a;border-radius:6px}' +
     '@media print{#demoBanner{display:none!important}}';
   document.head.appendChild(st);
+  notesUI();
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', banner); else banner();
 })();
