@@ -264,6 +264,62 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
 @keyframes spin{to{transform:rotate(360deg)}}
 .badge-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red);color:#fff;font-size:11px;font-weight:700;margin-left:4px}
 .utr-label{font-size:9px;font-weight:800;opacity:.7;letter-spacing:.5px;margin-right:2px}
+
+/* ── printed standings (fixed print colors, independent of Normal/Sun) ── */
+#printOverlay{position:fixed;inset:0;z-index:600;background:#5b6275;display:flex;flex-direction:column}
+.pv-toolbar{display:flex;gap:8px;align-items:center;padding:10px max(12px,env(safe-area-inset-right,0px)) 10px max(12px,env(safe-area-inset-left,0px));padding-top:calc(10px + env(safe-area-inset-top,0px));background:var(--surface);border-bottom:1px solid var(--border)}
+.pv-scroll{flex:1;overflow:auto;padding:12px;-webkit-overflow-scrolling:touch}
+#printView{width:816px;margin:0 auto;color:#0b0f1a;font-family:Inter,Arial,sans-serif;font-size:10pt}
+.pv-page{width:816px;min-height:1056px;background:#fff;padding:40px 44px 36px;display:flex;flex-direction:column;margin-bottom:14px;box-shadow:0 4px 18px rgba(0,0,0,.35)}
+.pv-capturing .pv-page{box-shadow:none;margin-bottom:0;min-height:1040px}
+.pv-header{border-bottom:3px solid #0b0f1a;padding-bottom:8px;margin-bottom:12px}
+.pv-club{font-family:'Barlow Condensed',Inter,sans-serif;font-weight:800;letter-spacing:2.5px;font-size:10.5pt;color:#1c52c7}
+#printView h1{font-family:'Barlow Condensed',Inter,sans-serif;font-weight:800;font-size:30pt;line-height:1.05;text-transform:uppercase}
+.pv-asof{font-size:9pt;color:#3a4256;margin-top:2px}
+.pv-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px;flex:1;align-content:start}
+.pv-wide{grid-column:1/-1}
+.pv-split{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.pv-dh{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid;padding-bottom:3px;margin-bottom:2px}
+.pv-dh h2{font-family:'Barlow Condensed',Inter,sans-serif;font-weight:800;font-size:15pt;text-transform:uppercase;letter-spacing:.3px}
+.pv-dh span{font-size:8pt;color:#3a4256}
+#printView table{width:100%;border-collapse:collapse}
+#printView th{font-size:7.2pt;text-transform:uppercase;letter-spacing:.8px;color:#3a4256;font-weight:600;text-align:left;padding:4px 4px 3px}
+#printView td{padding:4px;border-bottom:1px solid #dfe3ec;vertical-align:middle;color:#0b0f1a}
+#printView tbody tr:nth-child(even) td{background:#f5f7fb}
+#printView tr{break-inside:avoid}
+.pv-rk{width:22px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+.pv-top .pv-rk{color:#8a5a00}.pv-top .pv-nm{font-weight:700}
+.pv-mv{width:26px;font-size:7.5pt;font-weight:700}
+.pv-nm{white-space:nowrap}
+.pv-c{text-align:center;font-variant-numeric:tabular-nums;width:44px;white-space:nowrap}
+.pv-pts{text-align:right;font-weight:800;font-variant-numeric:tabular-nums;width:42px}
+.pv-up{color:#17713f}.pv-dn{color:#b3261e}.pv-eq{color:#9aa3b8}
+.pv-tag{display:inline-block;font-size:6.3pt;font-weight:700;letter-spacing:.4px;padding:0 4px;border-radius:3px;margin-left:5px;vertical-align:1px}
+.pv-new{background:#dcefe3;color:#17713f}.pv-idle{background:#f6dcda;color:#b3261e}
+.pv-pairs{font-size:8pt;margin-top:5px;color:#1d2433;line-height:1.5}.pv-pairs span{font-weight:700;color:#17713f}
+.pv-hl{grid-column:1/-1;display:grid;gap:10px;margin-top:6px}
+.pv-hl>div{border:1.5px solid #c9d0de;border-radius:8px;padding:9px 11px;background:#f8f9fc}
+.pv-lbl{font-size:7.2pt;text-transform:uppercase;letter-spacing:.9px;color:#3a4256;font-weight:600}
+.pv-big{font-family:'Barlow Condensed',Inter,sans-serif;font-weight:800;font-size:15pt;line-height:1.15;margin-top:2px}
+.pv-sub{font-size:8.3pt;color:#3a4256;margin-top:1px}
+.pv-footer{display:flex;gap:14px;align-items:center;border-top:2px solid #0b0f1a;padding-top:10px;margin-top:12px}
+.pv-footer img{width:88px;height:88px}
+.pv-how{flex:1;font-size:8.3pt;line-height:1.5;color:#1d2433}
+.pv-key{font-size:7.6pt;color:#3a4256;line-height:1.5;text-align:right;white-space:nowrap}
+@media print{
+  @page{size:letter;margin:0}
+  :root{padding:0!important}
+  html,body{background:#fff!important;height:auto!important}
+  body::before{display:none!important}
+  body>*:not(#printOverlay){display:none!important}
+  #printOverlay{position:static;display:block!important;background:#fff}
+  .pv-toolbar{display:none!important}
+  .pv-scroll{overflow:visible;padding:0}
+  #printView{zoom:1!important;width:auto}
+  .pv-page{box-shadow:none;margin:0;min-height:11in;width:8.5in;break-after:page}
+  .pv-page:last-child{break-after:auto}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
 </style>
 </head>
 <body>
@@ -608,6 +664,7 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
 <!-- ADMIN -->
 <div class="page" id="pageAdmin">
   <div class="pad" style="padding-top:16px">
+    <button class="btn btn-secondary btn-full" style="margin-bottom:14px" onclick="openPrintStandings()">🖨️ Print standings</button>
     <div class="tabs" id="adminTabs">
       <div class="tab active" onclick="switchAdmin('signups',this)">Sign-ups<span class="badge-count" id="signupCount" hidden>0</span></div>
       <div class="tab" onclick="switchAdmin('players',this)">Players</div>
@@ -736,6 +793,17 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
   </button>
 </nav>
 
+<!-- PRINT STANDINGS -->
+<div id="printOverlay" hidden>
+  <div class="pv-toolbar">
+    <button class="btn btn-secondary btn-sm" onclick="closePrintStandings()">✕ Close</button>
+    <div style="flex:1"></div>
+    <button class="btn btn-secondary btn-sm" onclick="savePdfStandings(this)">Save PDF</button>
+    <button class="btn btn-primary btn-sm" onclick="printStandings()">🖨️ Print</button>
+  </div>
+  <div class="pv-scroll"><div id="printView"></div></div>
+</div>
+
 <!-- PLAYER SHEET -->
 <div class="overlay" id="playerSheet" onclick="closeSheet('playerSheet')">
   <div class="sheet" onclick="event.stopPropagation()">
@@ -751,6 +819,6 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
 <!-- TOAST -->
 <div id="toast" style="position:fixed;bottom:calc(72px + env(safe-area-inset-bottom,0px) + 12px);left:50%;transform:translateX(-50%) translateY(10px);background:#222b3d;color:#fff;padding:10px 20px;border-radius:30px;font-size:14px;font-weight:600;z-index:500;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;white-space:nowrap"></div>
 
-<script src="app.js?v=20261025j"></script>
+<script src="app.js?v=20261025l"></script>
 </body>
 </html>

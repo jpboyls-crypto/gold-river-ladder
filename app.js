@@ -231,7 +231,12 @@ function getUTR(p,t){ return p[LADDERS[t].utr] }
 function tsMs(ts){ if(!ts) return Date.now(); if(typeof ts.seconds==='number') return ts.seconds*1000; const d=new Date(ts); return isNaN(d)?Date.now():d.getTime(); }
 function dayMs(d){ const [y,m,dd]=(d||'').split('-').map(Number); return new Date(y,(m||1)-1,dd||1).getTime(); }
 function fmtShort(ms){ return new Date(ms).toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
-function seasonStarted(){ return Date.now()>=dayMs(SEASON_START); }
+// RANK_AS_OF lets the app recompute the ladder as it stood on an earlier date (used for the ▲▼ movement
+// on printed standings). null = now.
+let RANK_AS_OF=null;
+function nowMs(){ return RANK_AS_OF==null?Date.now():RANK_AS_OF; }
+function inWindow(m){ return RANK_AS_OF==null||dayMs(m.date)<=RANK_AS_OF; }
+function seasonStarted(){ return nowMs()>=dayMs(SEASON_START); }
 
 // ── score confirmation ──
 // Old matches have no status: they count. Pending ones count once confirmed, or automatically after CONFIRM_HOURS.
@@ -250,7 +255,7 @@ function joinMs(p){ return p.createdAt?tsMs(p.createdAt):dayMs('2026-10-24'); }
 // whole calendar days, immune to daylight-saving shifts
 function dayNum(ms){ const d=new Date(ms); return Math.round(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())/DAY); }
 // a match keeps you active — except losing by forfeit (dodging a challenge shouldn't reset your clock)
-function activityFor(m,id){ return counts(m)&&playedIn(m,id)&&!(m.forfeit&&!wonBy(m,id)); }
+function activityFor(m,id){ return counts(m)&&inWindow(m)&&playedIn(m,id)&&!(m.forfeit&&!wonBy(m,id)); }
 function lastActivityMs(p){
   let last=Math.max(joinMs(p),dayMs(SEASON_START));
   for(const m of state.matches){ if(!activityFor(m,p.id)) continue; last=Math.max(last,dayMs(m.date)); }
@@ -265,7 +270,7 @@ function decayPenalty(p){
   const start=Math.max(joinMs(p),dayMs(SEASON_START));
   const pts=[start];
   for(const m of state.matches){ if(!activityFor(m,p.id)) continue; const d=dayMs(m.date); if(d>start) pts.push(d); }
-  pts.sort((a,b)=>a-b); pts.push(Date.now());
+  pts.sort((a,b)=>a-b); pts.push(nowMs());
   const holds=(p.holds||[]).map(h=>[dayNum(dayMs(h.from)),dayNum(dayMs(h.to))]);
   let pen=0;
   for(let i=1;i<pts.length;i++){
@@ -285,16 +290,17 @@ function isNewMember(p){ return Date.now()-joinMs(p)<OPEN_DAYS*DAY; }
 
 function getRating(p,t){
   const L=LADDERS[t]; let r=p[L.base]||NTRP_BASE[p.ntrp]||1200;
-  for(const m of state.matches){ if(m.ladder!==t||!playedIn(m,p.id)||!counts(m)) continue; r += wonBy(m,p.id)?WIN:LOSS; }
+  for(const m of state.matches){ if(m.ladder!==t||!playedIn(m,p.id)||!counts(m)||!inWindow(m)) continue; r += wonBy(m,p.id)?WIN:LOSS; }
   return r-decayPenalty(p);
 }
-function record(p){ let w=0,l=0; for(const m of state.matches){ if(!playedIn(m,p.id)||!counts(m)) continue; wonBy(m,p.id)?w++:l++; } return {w,l}; }
+function record(p){ let w=0,l=0; for(const m of state.matches){ if(!playedIn(m,p.id)||!counts(m)||!inWindow(m)) continue; wonBy(m,p.id)?w++:l++; } return {w,l}; }
 function playerLadders(p){ return LADDER_ORDER.filter(t=>{const L=LADDERS[t];return p[L.flag]&&(!L.gender||p.gender===L.gender)}); }
 function getRanked(t){
   const L=LADDERS[t];
-  return state.players.filter(p=>p.active!==false&&p[L.flag]&&(!L.gender||p.gender===L.gender))
+  return state.players.filter(p=>p.active!==false&&p[L.flag]&&(!L.gender||p.gender===L.gender)&&(RANK_AS_OF==null||joinMs(p)<=RANK_AS_OF))
     .map(p=>({p,r:getRating(p,t)})).sort((a,b)=>b.r-a.r||a.p.name.localeCompare(b.p.name)).map(x=>x.p);
 }
+function ranksAsOf(t,ms){ RANK_AS_OF=ms; try{ return getRanked(t).map(p=>p.id); } finally{ RANK_AS_OF=null; } }
 function rankIn(p,t){ const i=getRanked(t).findIndex(x=>x.id===p.id); return i<0?null:i+1 }
 function matchLine(match,viewerId){
   const mine=match.p1===viewerId||match.p1Partner===viewerId;
@@ -1175,6 +1181,111 @@ function renderRules(){
     q('Who do I contact with questions?',`<p>Jordan Boyls, Director of Tennis — <span style="user-select:all;color:var(--accent-hi);font-weight:600">jpboyls@gmail.com</span></p>`),
   ])}`;
   el.dataset.sig=sig;
+}
+
+// ═══════════════════════════════════════════
+//  PRINT STANDINGS (admin) — live data, 2 pages: singles / doubles
+// ═══════════════════════════════════════════
+const PRINT_COLOR={singles:'#1c52c7',doubles:'#17713f',mixed:'#5b2fc2'};
+function kindOf(t){ return t==='ms'||t==='ws'?'singles':t==='mx'?'mixed':'doubles'; }
+function moveHtml(id,t,prev){
+  const now=getRanked(t).findIndex(p=>p.id===id)+1, was=prev.indexOf(id)+1;
+  if(!was) return '<span class="pv-eq">•</span>';
+  const d=was-now; return d>0?`<span class="pv-up">▲${d}</span>`:d<0?`<span class="pv-dn">▼${-d}</span>`:'<span class="pv-eq">–</span>';
+}
+function printRows(t,list,start,prev){
+  return list.map((p,i)=>{
+    const rk=start+i, rec=record(p), utr=getUTR(p,t), idle=decayPenalty(p);
+    return `<tr class="${rk<=3?'pv-top':''}"><td class="pv-rk">${rk}</td><td class="pv-mv">${moveHtml(p.id,t,prev)}</td>
+      <td class="pv-nm">${esc(p.name)}${isNewMember(p)?'<span class="pv-tag pv-new">NEW</span>':''}${idle?`<span class="pv-tag pv-idle">−${idle} idle</span>`:''}</td>
+      <td class="pv-c">${esc(p.ntrp)}</td><td class="pv-c">${utr!=null&&utr!==''?Number(utr).toFixed(2):'—'}</td><td class="pv-c">${rec.w}–${rec.l}</td>
+      <td class="pv-pts" style="color:${PRINT_COLOR[kindOf(t)]}">${getRating(p,t)}</td></tr>`;}).join('');
+}
+function printTable(t,list,start,prev){
+  return `<table><thead><tr><th class="pv-rk">#</th><th class="pv-mv"></th><th>Player</th><th class="pv-c">NTRP</th><th class="pv-c">UTR</th><th class="pv-c">W–L</th><th class="pv-pts">Pts</th></tr></thead>
+    <tbody>${printRows(t,list,start,prev)}</tbody></table>`;
+}
+function printPairs(t){
+  const ps=pairingStats(t).slice(0,3).filter(s=>s.ids.every(getPlayer));
+  if(!ps.length) return '';
+  const short=id=>{ const n=displayName(id).split(' '); return n[0]+(n[1]?' '+n[1][0]+'.':''); };
+  return `<div class="pv-pairs"><b>Top pairings</b> ${ps.map(s=>`${esc(short(s.ids[0]))} &amp; ${esc(short(s.ids[1]))} <span>${s.wins}–${s.losses}</span>`).join(' · ')}</div>`;
+}
+function printDraw(t,prev,split){
+  const list=getRanked(t); if(!list.length) return '';
+  const c=PRINT_COLOR[kindOf(t)];
+  const head=`<div class="pv-dh" style="border-color:${c}"><h2 style="color:${c}">${LADDERS[t].label}</h2><span>${list.length} player${list.length===1?'':'s'}</span></div>`;
+  if(split&&list.length>8){ const h=Math.ceil(list.length/2);
+    return `<section class="pv-draw pv-wide">${head}<div class="pv-split">${printTable(t,list.slice(0,h),1,prev)}${printTable(t,list.slice(h),h+1,prev)}</div>${printPairs(t)}</section>`; }
+  return `<section class="pv-draw${split?' pv-wide':''}">${head}${printTable(t,list,1,prev)}${printPairs(t)}</section>`;
+}
+function printHighlights(){
+  const cards=[];
+  const ev=upcomingEvents()[0];
+  if(ev){ const T=EVENT_TYPES[ev.type]||EVENT_TYPES.other;
+    cards.push(`<div><div class="pv-lbl">Next up</div><div class="pv-big" style="color:${ev.type==='tournament'?'#8a5a00':'#5b2fc2'}">${T.icon} ${esc(ev.title)}</div><div class="pv-sub">${esc(fmtWhen(ev))} · sign up in the app (Events tab)</div></div>`); }
+  const since=Date.now()-30*DAY, cnt={};
+  state.matches.filter(m=>counts(m)&&dayMs(m.date)>=since).forEach(m=>[m.p1,m.p1Partner,m.p2,m.p2Partner].filter(Boolean).forEach(id=>cnt[id]=(cnt[id]||0)+1));
+  const top=Object.entries(cnt).filter(([id])=>getPlayer(id)).sort((a,b)=>b[1]-a[1]).slice(0,3);
+  if(top.length) cards.push(`<div><div class="pv-lbl">Most matches · last 30 days</div><div class="pv-big">${esc(displayName(top[0][0]))} · ${top[0][1]}</div><div class="pv-sub">${top.slice(1).map(([id,n])=>`${esc(displayName(id))} · ${n}`).join(' &nbsp;·&nbsp; ')||'&nbsp;'}</div></div>`);
+  let best=null;
+  LADDER_ORDER.forEach(t=>{ const prev=ranksAsOf(t,since), now=getRanked(t).map(p=>p.id);
+    now.forEach((id,i)=>{ const w=prev.indexOf(id); if(w<0) return; const gain=w-i; if(gain>0&&(!best||gain>best.gain)) best={id,gain,t,now:i+1}; }); });
+  if(best) cards.push(`<div><div class="pv-lbl">Biggest climber · last 30 days</div><div class="pv-big" style="color:#17713f">▲${best.gain} ${esc(displayName(best.id))}</div><div class="pv-sub">${LADDERS[best.t].label} · now #${best.now}</div></div>`);
+  return cards.length?`<div class="pv-hl" style="grid-template-columns:repeat(${cards.length},1fr)">${cards.join('')}</div>`:'';
+}
+// layout: which blocks go on which page. Default is 2 pages; Mixed gets its own page and the highlights
+// strip is dropped if they don't fit (openPrintStandings measures and retries).
+function buildStandings(layout){
+  layout=layout||{mixedOwnPage:false,highlights:true};
+  const total=layout.mixedOwnPage?3:2;
+  const asOf=new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  const weekAgo=Date.now()-7*DAY; const prev={}; LADDER_ORDER.forEach(t=>prev[t]=ranksAsOf(t,weekAgo));
+  const head=n=>`<header class="pv-header"><div><div class="pv-club">GOLD RIVER SPORTS CLUB</div><h1>Tennis Ladder Standings</h1><div class="pv-asof">As of ${esc(asOf)} · Page ${n} of ${total}</div></div></header>`;
+  const foot=`<footer class="pv-footer"><img src="qr-signup.png" alt="">
+    <div class="pv-how"><b>How it works:</b> Win +${WIN} · Loss ${LOSS} · Challenge up to 4 spots above you · Play within ${CHALLENGE_DAYS} days · Scores confirmed in the app within ${CONFIRM_HOURS} hours · After ${DECAY_GRACE} days without a match, −${DECAY_POINTS} points a week.<br><b>Not on the ladder yet?</b> Scan the code to sign up. Live standings, challenges and scores are in the ladder app.</div>
+    <div class="pv-key"><span class="pv-up">▲</span> moved up · <span class="pv-dn">▼</span> moved down<br>in the last 7 days · <span class="pv-eq">•</span> new<br><span class="pv-tag pv-new">NEW</span> joined recently</div></footer>`;
+  const page=(n,body)=>`<div class="pv-page">${head(n)}<div class="pv-cols">${body}</div>${foot}</div>`;
+  const p1=`${printDraw('ms',prev.ms)}${printDraw('ws',prev.ws)}${layout.highlights?printHighlights():''}`;
+  const mx=printDraw('mx',prev.mx,true);
+  const p2=`${printDraw('md',prev.md)}${printDraw('wd',prev.wd)}${layout.mixedOwnPage?'':mx}`;
+  return page(1,p1)+page(2,p2)+(layout.mixedOwnPage?page(3,mx):'');
+}
+const PAGE_PX=1056; // 11in at 96px/in
+function pagesOverflow(){ return [...document.querySelectorAll('#printView .pv-page')].map(pg=>pg.scrollHeight>PAGE_PX+1); }
+function openPrintStandings(){
+  const pv=$('printView'); pv.style.zoom=1;
+  $('printOverlay').hidden=false;
+  let layout={mixedOwnPage:false,highlights:true};
+  pv.innerHTML=buildStandings(layout);
+  let of=pagesOverflow();
+  if(of[1]){ layout.mixedOwnPage=true; pv.innerHTML=buildStandings(layout); of=pagesOverflow(); }
+  if(of[0]){ layout.highlights=false; pv.innerHTML=buildStandings(layout); }
+  $('printOverlay').hidden=false; document.body.style.overflow='hidden';
+  fitPrintPreview();
+}
+function closePrintStandings(){ $('printOverlay').hidden=true; document.body.style.overflow=''; }
+function fitPrintPreview(){ const z=Math.min(1,(window.innerWidth-24)/816); $('printView').style.zoom=z; }
+window.addEventListener('resize',()=>{ if(!$('printOverlay').hidden) fitPrintPreview(); });
+function printStandings(){ window.print(); }
+let html2pdfLoading=null;
+function loadHtml2pdf(){
+  if(window.html2pdf) return Promise.resolve();
+  if(!html2pdfLoading) html2pdfLoading=new Promise((res,rej)=>{ const sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'; sc.onload=res; sc.onerror=()=>{html2pdfLoading=null;rej(new Error('Could not load the PDF maker'));}; document.head.appendChild(sc); });
+  return html2pdfLoading;
+}
+async function savePdfStandings(btn){
+  const label=btn.textContent; btn.textContent='Making PDF…'; btn.disabled=true;
+  const el=$('printView'), z=el.style.zoom;
+  try{
+    await loadHtml2pdf();
+    el.style.zoom=1; el.classList.add('pv-capturing');
+    await html2pdf().set({margin:0,filename:`Gold-River-Ladder-Standings-${today()}.pdf`,image:{type:'jpeg',quality:0.95},
+      html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},jsPDF:{unit:'in',format:'letter',orientation:'portrait'},
+      pagebreak:{mode:['css'],before:'.pv-page + .pv-page',avoid:'tr'}}).from(el).save();
+    toast('PDF saved');
+  }catch(e){ toast('Could not make the PDF — try Print instead'); console.error(e); }
+  finally{ el.style.zoom=z; el.classList.remove('pv-capturing'); btn.textContent=label; btn.disabled=false; }
 }
 
 // ═══════════════════════════════════════════
