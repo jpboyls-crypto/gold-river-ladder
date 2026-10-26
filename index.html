@@ -6,7 +6,11 @@
 <title>Gold River Tennis Ladder</title>
 <meta name="description" content="Gold River Sports Club adult tennis ladder — challenges, scores, standings and hitting partners.">
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#1a1f2e">
+<meta name="theme-color" content="#1a1f2e" id="themeColor">
+<script>
+// Apply the saved display mode before anything paints, so there's no flash.
+try{ if(localStorage.getItem('grTheme')==='sun'){ document.documentElement.setAttribute('data-theme','sun'); document.getElementById('themeColor').setAttribute('content','#ffffff'); } }catch(e){}
+</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -39,26 +43,34 @@
   --nav-h:     56px;
   color-scheme: dark;
 }
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    --bg:       #f0f3f9;
-    --surface:  #ffffff;
-    --surface2: #e8edf5;
-    --border:   #c8d0e0;
-    --fg:       #0f1117;
-    --fg2:      #5a6480;
-    color-scheme: light;
-  }
-}
-:root[data-theme="light"] {
-  --bg:       #f0f3f9;
-  --surface:  #ffffff;
-  --surface2: #e8edf5;
-  --border:   #c8d0e0;
-  --fg:       #0f1117;
-  --fg2:      #5a6480;
+/* Sun mode: bright, high-contrast palette for reading outdoors in direct sunlight.
+   Darker accents than the dark theme so colored text stays legible on white. */
+:root[data-theme="sun"] {
+  --bg:        #f3f5f9;
+  --surface:   #ffffff;
+  --surface2:  #e9edf4;
+  --border:    #aeb8cc;
+  --fg:        #05070d;
+  --fg2:       #343c50;
+  --accent:    #1c52c7;
+  --accent-hi: #1745ad;
+  --green:     #17713f;
+  --gold:      #8a5a00;
+  --red:       #b3261e;
+  --purple:    #5b2fc2;
   color-scheme: light;
 }
+:root[data-theme="sun"] .card, :root[data-theme="sun"] .topbar, :root[data-theme="sun"] .bottomnav{box-shadow:0 1px 3px rgba(5,7,13,.10)}
+:root[data-theme="sun"] .tab.active{box-shadow:0 1px 4px rgba(5,7,13,.18)}
+:root[data-theme="sun"] .admin-badge{background:#f2c14e;color:#1a1200}
+:root[data-theme="sun"] .avatar{border-color:#8f9ab3;color:#1d2433}
+:root[data-theme="sun"] .chip, :root[data-theme="sun"] .pstat, :root[data-theme="sun"] .hit-tag{font-weight:700}
+:root[data-theme="sun"] .rank-meta, :root[data-theme="sun"] .ev-meta, :root[data-theme="sun"] .match-player-rating{color:#2a3245}
+.theme-btn{flex:none;width:32px;height:32px;border-radius:50%;border:1.5px solid var(--border);color:var(--fg2);display:flex;align-items:center;justify-content:center;background:var(--surface2)}
+.theme-btn svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.theme-seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--surface2);border-radius:10px;padding:4px}
+.theme-seg button{padding:10px;border-radius:8px;font-weight:600;font-size:14px;color:var(--fg2)}
+.theme-seg button.on{background:var(--surface);color:var(--fg);box-shadow:0 1px 4px rgba(0,0,0,.2)}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;font-family:'Inter',system-ui,sans-serif;font-size:15px;background:var(--bg);color:var(--fg)}
 button{cursor:pointer;border:none;background:none;font:inherit;color:inherit}
@@ -75,10 +87,11 @@ a{color:var(--accent-hi);text-decoration:none}
 }
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:200;background:var(--surface)}
 .topbar-logo{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.topbar-logo>div{min-width:0}
 .logo-icon{width:36px;height:36px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .logo-icon svg{width:20px;height:20px;fill:#fff}
 .logo-text{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:17px;letter-spacing:.5px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.logo-sub{font-size:11px;color:var(--fg2);font-weight:400;letter-spacing:.3px}
+.logo-sub{font-size:11px;color:var(--fg2);font-weight:400;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .admin-badge{font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;background:var(--gold);color:#1a1200;letter-spacing:.3px;flex-shrink:0}
 
 .bottomnav{
@@ -267,6 +280,7 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
     </div>
   </div>
   <span class="admin-badge" id="adminBadge" hidden>ADMIN</span>
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" aria-label="Switch between normal and sun mode"></button>
   <button class="help-btn" id="helpBtn" hidden onclick="goPage('Rules')" aria-label="Rules and FAQ">?</button>
 </div>
 
@@ -522,6 +536,12 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
     <div class="section-head">Match History</div>
     <div class="card" id="historyList"></div>
 
+    <div class="section-head">Display</div>
+    <div class="theme-seg" id="themeSeg">
+      <button data-mode="normal" onclick="setTheme('normal')">🌙 Normal</button>
+      <button data-mode="sun" onclick="setTheme('sun')">☀️ Sun mode</button>
+    </div>
+    <div style="font-size:12px;color:var(--fg2);margin-top:6px;line-height:1.5">Sun mode is bright and high-contrast for reading outside on court. Tap the sun/moon button at the top to switch any time.</div>
     <button class="btn btn-secondary btn-full" style="margin-top:16px" onclick="goPage('Rules')">📖 Ladder rules &amp; FAQ</button>
     <button class="btn btn-secondary btn-full" style="margin-top:8px" onclick="goPage('Install')">📲 Install on your phone</button>
 
@@ -730,6 +750,6 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
 <!-- TOAST -->
 <div id="toast" style="position:fixed;bottom:calc(72px + env(safe-area-inset-bottom,0px) + 12px);left:50%;transform:translateX(-50%) translateY(10px);background:#222b3d;color:#fff;padding:10px 20px;border-radius:30px;font-size:14px;font-weight:600;z-index:500;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;white-space:nowrap"></div>
 
-<script src="app.js?v=20261025g"></script>
+<script src="app.js?v=20261025i"></script>
 </body>
 </html>

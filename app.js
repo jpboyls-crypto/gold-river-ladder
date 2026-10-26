@@ -1178,6 +1178,26 @@ function renderRules(){
 }
 
 // ═══════════════════════════════════════════
+//  DISPLAY MODE (Normal = dark, Sun = bright high-contrast)
+// ═══════════════════════════════════════════
+const ICON_SUN='<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8 6 18M18 6l1.8-1.8"/></svg>';
+const ICON_MOON='<svg viewBox="0 0 24 24"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11z"/></svg>';
+function currentTheme(){ return document.documentElement.getAttribute('data-theme')==='sun'?'sun':'normal'; }
+function setTheme(mode){
+  if(mode==='sun') document.documentElement.setAttribute('data-theme','sun'); else document.documentElement.removeAttribute('data-theme');
+  try{ localStorage.setItem('grTheme',mode); }catch(e){}
+  const tc=$('themeColor'); if(tc) tc.setAttribute('content',mode==='sun'?'#ffffff':'#1a1f2e');
+  syncThemeUI();
+}
+function toggleTheme(){ setTheme(currentTheme()==='sun'?'normal':'sun'); toast(currentTheme()==='sun'?'☀️ Sun mode on':'🌙 Normal mode'); }
+function syncThemeUI(){
+  const sun=currentTheme()==='sun';
+  const b=$('themeBtn'); if(b){ b.innerHTML=sun?ICON_MOON:ICON_SUN; b.setAttribute('aria-label',sun?'Switch to normal mode':'Switch to sun mode'); }
+  document.querySelectorAll('#themeSeg button').forEach(x=>x.classList.toggle('on',x.dataset.mode===(sun?'sun':'normal')));
+}
+syncThemeUI();
+
+// ═══════════════════════════════════════════
 //  MISC
 // ═══════════════════════════════════════════
 function switchInstall(which,el){ document.querySelectorAll('#installTabs .tab').forEach(t=>t.classList.remove('active')); el.classList.add('active'); $('installIOS').hidden=which!=='ios'; $('installAndroid').hidden=which!=='android'; }
