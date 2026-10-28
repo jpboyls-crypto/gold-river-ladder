@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   Gold River Tennis Ladder — DEMO MODE
+   Ladder app — DEMO MODE (Spare Time Indoor Center, tennis or pickleball)
    Stands in for Firebase with an in-memory database filled with made-up
    players, two months of matches, events and more. Nothing here talks to the
    real database; every change is lost on reload.
@@ -7,6 +7,45 @@
 (function(){
 'use strict';
 const DAY = 86400000;
+
+/* ───────────── demo club + sport ─────────────
+   The demo shows the real app code branded for Spare Time Indoor Center.
+   demo/ is tennis, demo/pickleball/ is pickleball (set by window.DEMO_SPORT).
+   Wording is swapped on screen as the app draws it, so the live app's code is untouched. */
+const PB = window.DEMO_SPORT === 'pickleball';
+const ROOT = window.DEMO_ROOT || '../';
+const CLUB = 'Spare Time Indoor Center', CLUB_SHORT = 'Spare Time Indoor';
+const REPL = [
+  [/Gold River and club-wide Spare Time members/g, 'Spare Time members'], [/Gold River Sports Club/g, CLUB], [/Gold River SC\b/g, CLUB_SHORT], [/GOLD RIVER/g, CLUB_SHORT.toUpperCase()], [/Gold River/g, CLUB_SHORT]
+].concat(PB ? [
+  [/([Bb])est of 3 sets, with a 10-point tiebreak in place of a third set/g, '$1est of 3 games to 11, win by 2'],
+  [/a new can of balls and the winner keeps them/g, 'a new ball and the winner keeps it'],
+  [/brings a new can, and the winner keeps them/g, 'brings a new ball, and the winner keeps it'],
+  [/brings the can/g, 'brings the ball'], [/Who brings the balls\?/g, 'Who brings the ball?'],
+  [/Hitting \/ rally/g, 'Drilling / dinking'], [/Hitting Partner/g, 'Practice Partner'], [/hitting partner/g, 'practice partner'],
+  [/Working on my backhand, happy to feed balls too/g, 'Working on my third-shot drop, happy to drill dinks too'],
+  [/6-3, 7-5/g, '11-7, 11-9'], [/e\.g\. 8\.50/g, 'e.g. 3.85'], [/e\.g\. 9\.00/g, 'e.g. 4.10'],
+  [/USTA /g, ''], [/NTRP/g, 'Level'], [/UTR/g, 'DUPR'], [/🎾/g, '🏓'],
+  [/Tennis/g, 'Pickleball'], [/tennis/g, 'pickleball']
+] : []);
+const fx = str => REPL.reduce((t, [re, to]) => t.replace(re, to), str);
+function fxNode(n){
+  if (n.nodeType === 3) {
+    const par = n.parentNode; if (par && (par.nodeName === 'SCRIPT' || par.nodeName === 'STYLE' || (par.closest && par.closest('#demoBanner')))) return;
+    const v = fx(n.nodeValue); if (v !== n.nodeValue) n.nodeValue = v;
+  } else if (n.nodeType === 1) {
+    if (n.nodeName === 'SCRIPT' || n.nodeName === 'STYLE' || n.id === 'demoBanner') return;
+    if (n.placeholder) { const v = fx(n.placeholder); if (v !== n.placeholder) n.placeholder = v; }
+    for (const c of n.childNodes) fxNode(c);
+  }
+}
+new MutationObserver(ms => { for (const m of ms) { if (m.type === 'characterData') fxNode(m.target); else m.addedNodes.forEach(fxNode); } })
+  .observe(document.documentElement, { subtree: true, childList: true, characterData: true });
+document.addEventListener('DOMContentLoaded', () => {
+  fxNode(document.body); document.title = fx(document.title);
+  // welcome messages are built as text for Gmail / Messages
+  ['welcomeText', 'welcomeEmail'].forEach(f => { const o = window[f]; if (typeof o === 'function') window[f] = function(){ const r = o.apply(this, arguments); return typeof r === 'string' ? fx(r) : r; }; });
+});
 
 /* ───────────── in-memory Firebase (compat API subset the app uses) ───────────── */
 const store = {};              // { collection: { id: data } }
@@ -86,7 +125,8 @@ const LAST = ['Delgado','Whitaker','Tran','Okafor','Lindqvist','Cho','Haverford'
 const LEVELS = ['3.0','3.0','3.5','3.5','3.5','3.5','4.0','4.0','4.0','4.0','4.5','4.5','4.5','5.0'];
 const BASE = { '2.5': 1000, '3.0': 1100, '3.5': 1200, '4.0': 1400, '4.5': 1600, '5.0': 1800 };
 const SKILL = { '3.0': .30, '3.5': .42, '4.0': .55, '4.5': .68, '5.0': .80 };
-const UTR = { '3.0': 3.4, '3.5': 4.5, '4.0': 5.8, '4.5': 7.1, '5.0': 8.5 };
+const UTR = PB ? { '3.0': 3.1, '3.5': 3.6, '4.0': 4.1, '4.5': 4.6, '5.0': 5.15 } : { '3.0': 3.4, '3.5': 4.5, '4.0': 5.8, '4.5': 7.1, '5.0': 8.5 };   // pickleball: DUPR
+const RSPREAD = PB ? .35 : 1.2;
 const AVAIL = ['Weekday evenings','Sat & Sun mornings','Lunchtime Tue/Thu','Early mornings before work','Weekends only','Mon/Wed/Fri mornings','Any evening after 6','Flexible — just text me'];
 
 const players = []; const used = new Set();
@@ -104,11 +144,11 @@ function mkPlayer(gender, opts){
   const p = {
     name, initials: name.split(' ').map(x => x[0]).join(''), email: paper ? '' : id, phone: phone(), paper, social,
     ntrp: lvl, gender, membership: rnd() < .75 ? 'full' : 'tennis',
-    singles: ranked && (opts.singles != null ? opts.singles : rnd() < .62),
+    singles: ranked && (opts.singles != null ? opts.singles : rnd() < (PB ? .34 : .62)),
     doubles: ranked && (opts.doubles != null ? opts.doubles : rnd() < .78),
-    mixed:   ranked && (opts.mixed   != null ? opts.mixed   : rnd() < .58),
-    utrSingles: rnd() < .7 ? +(UTR[lvl] + rnd() * 1.2 - .5).toFixed(2) : null,
-    utrDoubles: rnd() < .6 ? +(UTR[lvl] + .3 + rnd() * 1.2 - .5).toFixed(2) : null,
+    mixed:   ranked && (opts.mixed   != null ? opts.mixed   : rnd() < (PB ? .74 : .58)),
+    utrSingles: rnd() < .7 ? +(UTR[lvl] + rnd() * RSPREAD - RSPREAD * .42).toFixed(2) : null,
+    utrDoubles: rnd() < .6 ? +(UTR[lvl] + (PB ? .05 : .3) + rnd() * RSPREAD - RSPREAD * .42).toFixed(2) : null,
     baseSingles: BASE[lvl] + pick([-40, -20, 0, 0, 20, 40]), baseDoubles: BASE[lvl] + pick([-40, -20, 0, 0, 20, 40]), baseMixed: BASE[lvl] + pick([-40, -20, 0, 0, 20, 40]),
     availability: pick(AVAIL), active: true, billingStart: '2027-01-01',
     createdAt: ts(T0 - joinedDaysAgo * DAY + 10 * 3600000), approvedBy: 'jpboyls@gmail.com'
@@ -120,7 +160,7 @@ function mkPlayer(gender, opts){
 }
 // the admin, playing too
 const jordan = mkPlayer('M', { name: 'Jordan Boyls', id: 'jpboyls@gmail.com', ntrp: '4.5', singles: true, doubles: true, mixed: true, joined: 66 });
-jordan.utrSingles = 9.24; jordan.utrDoubles = 9.8; jordan.availability = 'Evenings after lessons';
+if (PB) { jordan.utrSingles = 4.52; jordan.utrDoubles = 4.71; } else { jordan.utrSingles = 9.24; jordan.utrDoubles = 9.8; } jordan.availability = 'Evenings after lessons';
 for (let i = 0; i < 44; i++) mkPlayer('M');
 for (let i = 0; i < 36; i++) mkPlayer('F');
 // newer members (joined in the last ~3 weeks)
@@ -144,8 +184,10 @@ const steady = { md: [], wd: [], mx: [] };
 // make sure Jordan has a regular partner in men's and mixed doubles
 steady.md[0] = [jordan, steady.md[0][1]]; steady.mx[0] = [jordan, steady.mx[0][1]];
 
-const SCORES_CLOSE = ['7-5, 6-4', '6-4, 7-6', '4-6, 6-3, 10-7', '6-3, 4-6, 10-8', '7-6, 6-4', '6-4, 6-4', '3-6, 6-4, 10-6'];
-const SCORES_EASY = ['6-2, 6-1', '6-1, 6-3', '6-3, 6-2', '6-0, 6-2', '6-2, 6-3'];
+const SCORES_CLOSE = PB ? ['11-9, 11-8', '11-7, 9-11, 11-8', '12-10, 11-9', '9-11, 11-6, 11-9', '11-8, 11-9', '13-11, 11-7', '8-11, 11-9, 11-7']
+                        : ['7-5, 6-4', '6-4, 7-6', '4-6, 6-3, 10-7', '6-3, 4-6, 10-8', '7-6, 6-4', '6-4, 6-4', '3-6, 6-4, 10-6'];
+const SCORES_EASY = PB ? ['11-3, 11-4', '11-5, 11-2', '11-4, 11-6', '11-2, 11-5', '11-6, 11-3'] : ['6-2, 6-1', '6-1, 6-3', '6-3, 6-2', '6-0, 6-2', '6-2, 6-3'];
+const SC = PB ? { pend: '11-8, 7-11, 11-9', note: '11-8, 8-11, 11-9' } : { pend: '6-4, 3-6, 10-8', note: '6-4, 4-6, 10-7' };
 const skillOf = list => list.reduce((a, p) => a + p._skill, 0) / list.length;
 let mid = 0;
 const matches = [];
@@ -166,7 +208,7 @@ function addMatch(t, A, B, dayMs, extra){
   if (sub._id !== m.p1 && sub._id !== m.p1Partner && !paperInvolved) { m.submittedBy = m.p1; }
   matches.push(['m' + (++mid), m]); return m;
 }
-const DRAW_W = [['ms', 24], ['ws', 15], ['md', 23], ['wd', 16], ['mx', 22]];
+const DRAW_W = PB ? [['ms', 12], ['ws', 8], ['md', 27], ['wd', 21], ['mx', 32]] : [['ms', 24], ['ws', 15], ['md', 23], ['wd', 16], ['mx', 22]];
 function pickDraw(){ let r = rnd() * 100; for (const [t, w] of DRAW_W) { if ((r -= w) < 0) return t; } return 'mx'; }
 function eligible(p, t, dayMs){ return inDraw(p, t) && p._join <= dayMs && (p.active || !p.inactiveSince || dayMs < new Date(p.inactiveSince + 'T00:00:00').getTime()); }
 function near(pool, x){ const c = pool.filter(p => p !== x).sort((a, b) => Math.abs(a._skill - x._skill) - Math.abs(b._skill - x._skill)); return c[Math.min(c.length - 1, Math.floor(rnd() * Math.min(6, c.length)))]; }
@@ -201,7 +243,7 @@ recentPending.forEach(([a, b], i) => addMatch('ms', [a], [b], T0 - i * DAY, { st
 // one waiting on Jordan to confirm
 { const opp = near(ranked.filter(p => inDraw(p, 'ms') && p.active), jordan);
   const m = addMatch('ms', [opp], [jordan], T0 - DAY, { status: 'pending', createdAt: ts(NOW - 9 * 3600000) });
-  m.p1 = opp._id; m.p2 = jordan._id; m.winner = opp._id; m.submittedBy = opp._id; m.score = '6-4, 3-6, 10-8'; }
+  m.p1 = opp._id; m.p2 = jordan._id; m.winner = opp._id; m.submittedBy = opp._id; m.score = SC.pend; }
 matches.forEach(([id, m]) => put('matches', id, m));
 players.forEach(p => put('players', p._id, p));
 
@@ -231,7 +273,7 @@ for (let i = 0; i < 40; i++) { const t = pick(['ms', 'ws']); const pool = ranked
 
 /* ───────────── practice board ───────────── */
 const FORMATS = ['hit', 'drill', 'singles', 'doubles'];
-const NOTES = ['Looking for a steady rally partner, 45–60 min.', 'Happy to feed balls and work on volleys.', 'Need 2 more for a practice doubles set.', 'Working on my serve — anyone want to do serve & return?', 'Early hit before work, about an hour.', 'Practice set, no pressure.', 'Need a fourth for Saturday doubles!', 'Lob and overhead drills, all welcome.', 'Coming back from injury, easy hitting please.', 'Want to play some tiebreaks.'];
+const NOTES = PB ? ['Looking for a steady drilling partner, about an hour.', 'Happy to drill dinks and third-shot drops.', 'Need 2 more for practice doubles games.', 'Working on my serve and return depth — anyone want to rep it?', 'Early session before work, about an hour.', 'Practice games, no pressure.', 'Need a fourth for Saturday doubles!', 'Reset and hands-battle drills, all welcome.', 'Coming back from injury, easy pace please.', 'Want to play some games to 15.'] : ['Looking for a steady rally partner, 45–60 min.', 'Happy to feed balls and work on volleys.', 'Need 2 more for a practice doubles set.', 'Working on my serve — anyone want to do serve & return?', 'Early hit before work, about an hour.', 'Practice set, no pressure.', 'Need a fourth for Saturday doubles!', 'Lob and overhead drills, all welcome.', 'Coming back from injury, easy hitting please.', 'Want to play some tiebreaks.'];
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], TIMES = ['Early AM', 'Mid-morning', 'Lunch', 'Afternoon', 'Evening'];
 const appPeople = players.filter(p => !p.paper);
 for (let i = 0; i < 11; i++) {
@@ -245,7 +287,7 @@ for (let i = 0; i < 11; i++) {
 const rsvp = (n, pool) => shuffle((pool || appPeople)).slice(0, n).map(p => p._id);
 const MIXER_DESC = 'Drop-in point play, food and drinks — come socialize and play. Matches you play can count toward the ladder (just enter the score in the app afterwards), or use the night to hit and practice with other members. All levels welcome; come and go as you like.';
 let eid = 0;
-function ev(o){ put('events', 'e' + (++eid), Object.assign({ location: 'Gold River Sports Club', eligibility: '', rsvpOn: true, capacity: null, price: null, memberPrice: null, createdBy: 'jpboyls@gmail.com', createdAt: ts(T0 - 70 * DAY) }, o)); }
+function ev(o){ put('events', 'e' + (++eid), Object.assign({ location: CLUB, eligibility: '', rsvpOn: true, capacity: null, price: null, memberPrice: null, createdBy: 'jpboyls@gmail.com', createdAt: ts(T0 - 70 * DAY) }, o)); }
 const lastFri = (y, m) => { const d = new Date(y, m + 1, 0); while (d.getDay() !== 5) d.setDate(d.getDate() - 1); return d; };
 const mixerDates = [];
 for (let k = -2; k <= 13; k++) {
@@ -262,9 +304,9 @@ mixerDates.forEach(d => {
   const n = past ? 34 + Math.floor(rnd() * 14) : soon < 10 ? 26 : soon < 40 ? 12 + Math.floor(rnd() * 6) : Math.floor(rnd() * 4);
   ev({ type: 'mixer', title: d.toLocaleDateString('en-US', { month: 'long' }) + ' Ladder Mixer', date: ds(ms), start: '18:30', end: '21:00', price: 10, description: MIXER_DESC, rsvps: rsvp(n), series: 'mixer' });
 });
-ev({ type: 'social', title: 'Ladder Launch Kickoff BBQ', date: ds(T0 - 59 * DAY), start: '17:00', end: '20:00', price: 20, memberPrice: 15, description: 'Kick off the new Gold River Tennis Ladder! Round-robin doubles, BBQ, drinks and a quick walkthrough of the ladder app.', rsvps: rsvp(61) });
-ev({ type: 'clinic', title: 'Doubles Strategy Clinic with Jordan', date: ds(T0 - 24 * DAY), start: '09:00', end: '10:30', price: 25, memberPrice: 20, capacity: 16, description: 'Poaching, signals and serve-and-volley patterns. 4.0 and above.', rsvps: rsvp(16, appPeople.filter(p => +p.ntrp >= 4)) });
-ev({ type: 'clinic', title: 'Beginner-Friendly Drill Night', date: ds(T0 + 12 * DAY), start: '18:00', end: '19:30', price: 15, memberPrice: 10, capacity: 12, description: 'Relaxed drills and point play for 3.0–3.5 players. Great for new ladder members.', rsvps: rsvp(9, appPeople.filter(p => +p.ntrp <= 3.5)) });
+ev({ type: 'social', title: 'Ladder Launch Kickoff BBQ', date: ds(T0 - 59 * DAY), start: '17:00', end: '20:00', price: 20, memberPrice: 15, description: 'Kick off the new ' + CLUB_SHORT + (PB ? ' Pickleball' : ' Tennis') + ' Ladder! Round-robin doubles, BBQ, drinks and a quick walkthrough of the ladder app.', rsvps: rsvp(61) });
+ev({ type: 'clinic', title: PB ? 'Third-Shot Drop & Reset Clinic' : 'Doubles Strategy Clinic with Jordan', date: ds(T0 - 24 * DAY), start: '09:00', end: '10:30', price: 25, memberPrice: 20, capacity: 16, description: PB ? 'Drops, resets and transition-zone patterns. 4.0 and above.' : 'Poaching, signals and serve-and-volley patterns. 4.0 and above.', rsvps: rsvp(16, appPeople.filter(p => +p.ntrp >= 4)) });
+ev({ type: 'clinic', title: 'Beginner-Friendly Drill Night', date: ds(T0 + 12 * DAY), start: '18:00', end: '19:30', price: 15, memberPrice: 10, capacity: 12, description: PB ? 'Relaxed dinking drills and game play for 3.0–3.5 players. Great for new ladder members.' : 'Relaxed drills and point play for 3.0–3.5 players. Great for new ladder members.', rsvps: rsvp(9, appPeople.filter(p => +p.ntrp <= 3.5)) });
 { const y = today0.getMonth() >= 10 ? today0.getFullYear() : today0.getFullYear();
   ev({ type: 'social', title: 'Holiday Ladder Party', date: y + '-12-12', start: '18:00', end: '22:00', price: 20, memberPrice: 15, description: 'Holiday doubles round robin, dinner, drinks and the first ladder awards of the season.', rsvps: rsvp(34) }); }
 [['03-27', 'Q1', 18], ['06-26', 'Q2', 6], ['09-25', 'Q3', 2], ['12-18', 'Q4', 0]].forEach(([md, q, n]) => ev({ type: 'tournament', title: q + ' Ladder Tournament', date: '2027-' + md, start: '08:00', end: '16:00', eligibility: 'All active ladder players — seeded by current ladder rank', description: 'Quarterly ladder tournament across all five draws. Format and draw sizes will be posted closer to the date.', rsvps: rsvp(n, ranked.filter(p => !p.paper)) }));
@@ -276,9 +318,9 @@ ev({ type: 'clinic', title: 'Beginner-Friendly Drill Night', date: ds(T0 + 12 * 
 /* ───────────── who you're viewing as ───────────── */
 const member = ranked.filter(p => p.gender === 'F' && p.singles && p.doubles && p.active && !p.paper).sort((a, b) => b._skill - a._skill)[6] || ranked[5];
 const social = players.find(p => p.social);
-const VIEWERS = [[jordan._id, 'Jordan Boyls (admin)'], [member._id, member.name + ' (member)'], [social._id, social.name + ' (social member)']];
+const VIEWERS = [[jordan._id, 'Jordan Boyls (admin)', 'admin'], [member._id, member.name + ' (member)', 'member'], [social._id, social.name + ' (social member)', 'social']];
 let viewAs = jordan._id;
-try { const v = sessionStorage.getItem('demoViewAs'); if (VIEWERS.some(x => x[0] === v)) viewAs = v; } catch (e) {}
+try { const v = sessionStorage.getItem('demoViewAs'); const hit = VIEWERS.find(x => x[2] === v); if (hit) viewAs = hit[0]; } catch (e) {}
 authUser = { email: viewAs };
 
 /* ───────────── sample phone notifications (demo only) ─────────────
@@ -306,8 +348,8 @@ const NOTES_FOR = {
       docRef('challenges', 'live' + (++nSeq)).set({ from: r._id, to: meP._id, ladder: t, date: ds(T0 + 3 * DAY), message: 'Saturday 9am? I can book court 4.', status: 'pending', createdAt: ts(Date.now()) });
       return { title: 'You’ve been challenged 🎾', body: nm(r) + ' challenged you in ' + (t === 'ws' ? 'Women’s' : 'Men’s') + ' Singles. Tap to accept.', act: go('Home') }; },
     () => { const t = meP.gender === 'F' ? 'wd' : 'md'; const pool = ranked.filter(p => inDraw(p, t) && p.active && !p.paper && p !== meP); const pa = near(pool, meP), o1 = near(pool.filter(p => p !== pa), meP), o2 = near(pool.filter(p => p !== pa && p !== o1), o1);
-      docRef('matches', 'live' + (++nSeq)).set({ p1: o1._id, p1Partner: o2._id, p2: meP._id, p2Partner: pa._id, ladder: t, score: '6-4, 4-6, 10-7', winner: o1._id, date: ds(T0), submittedBy: o1._id, status: 'pending', createdAt: ts(Date.now()) });
-      return { title: 'Confirm your score', body: nm(o1) + ' entered 6-4, 4-6, 10-7 for today’s doubles. Confirm within 48 hours.', act: go('Home') }; },
+      docRef('matches', 'live' + (++nSeq)).set({ p1: o1._id, p1Partner: o2._id, p2: meP._id, p2Partner: pa._id, ladder: t, score: SC.note, winner: o1._id, date: ds(T0), submittedBy: o1._id, status: 'pending', createdAt: ts(Date.now()) });
+      return { title: 'Confirm your score', body: nm(o1) + ' entered ' + SC.note + ' for today’s doubles. Confirm within 48 hours.', act: go('Home') }; },
     () => { const e = nextEvent('mixer'); return { title: 'Ladder Mixer ' + (e ? whenTxt(e) : 'this Friday'), body: (e ? e.title : 'Ladder Mixer') + ' · 6:30 PM · $10. ' + (e ? e.rsvps.length : 26) + ' members going.', act: go('Events') }; }
   ],
   social: [
@@ -322,14 +364,14 @@ function showNote(){
   let el = document.getElementById('demoToast');
   if (!el) {
     el = document.createElement('div'); el.id = 'demoToast'; el.setAttribute('role', 'status');
-    el.innerHTML = '<img src="../icon-192.png" alt=""><div class="dt-main"><div class="dt-head"><span>GOLD RIVER LADDER</span><span>now</span></div><div class="dt-title"></div><div class="dt-body"></div></div>';
+    el.innerHTML = '<img src="' + ROOT + 'icon-192.png" alt=""><div class="dt-main"><div class="dt-head"><span>GOLD RIVER LADDER</span><span>now</span></div><div class="dt-title"></div><div class="dt-body"></div></div>';
     document.body.appendChild(el);
     let sy = null;
     el.addEventListener('touchstart', e => { sy = e.touches[0].clientY; }, { passive: true });
     el.addEventListener('touchmove', e => { if (sy != null && e.touches[0].clientY - sy < -25) { el.classList.remove('show'); sy = null; } }, { passive: true });
   }
   const n = myNotes[nIdx % myNotes.length](); nIdx++;
-  el.querySelector('.dt-title').textContent = n.title; el.querySelector('.dt-body').textContent = n.body;
+  el.querySelector('.dt-title').textContent = fx(n.title); el.querySelector('.dt-body').textContent = fx(n.body);
   el.onclick = () => { el.classList.remove('show'); n.act(); };
   el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
   clearTimeout(hideT); hideT = setTimeout(() => el.classList.remove('show'), 8000);
@@ -347,7 +389,7 @@ function notesUI(){
     '@media print{#demoToast,#demoNotify{display:none!important}}';
   document.head.appendChild(st);
   // first one shows by itself shortly after the app opens (once per viewer per visit)
-  let seen = false; try { seen = sessionStorage.getItem('demoNoteShown-' + viewAs) === '1'; sessionStorage.setItem('demoNoteShown-' + viewAs, '1'); } catch (e) {}
+  const nKey = 'demoNoteShown-' + (PB ? 'pb-' : '') + viewAs; let seen = false; try { seen = sessionStorage.getItem(nKey) === '1'; sessionStorage.setItem(nKey, '1'); } catch (e) {}
   if (!seen) setTimeout(showNote, 5000);
 }
 
@@ -358,14 +400,17 @@ function banner(){
   if (document.getElementById('demoBanner')) return;
   const b = document.createElement('div'); b.id = 'demoBanner';
   b.innerHTML = '<div class="db-row"><span class="db-tag">DEMO DATA</span><span class="db-txt">Made-up players and results. Changes reset when you reload.</span></div>' +
-    '<div class="db-row"><label for="demoViewAs">Viewing as</label><select id="demoViewAs">' + VIEWERS.map(([id, label]) => '<option value="' + id + '"' + (id === viewAs ? ' selected' : '') + '>' + label + '</option>').join('') + '</select></div>';
+    '<div class="db-row"><label for="demoSport">Sport</label><select id="demoSport"><option value="tennis"' + (PB ? '' : ' selected') + '>🎾 Tennis</option><option value="pickleball"' + (PB ? ' selected' : '') + '>🏓 Pickleball</option></select></div>' +
+    '<div class="db-row"><label for="demoViewAs">Viewing as</label><select id="demoViewAs">' + VIEWERS.map(([id, label, role]) => '<option value="' + role + '"' + (id === viewAs ? ' selected' : '') + '>' + label + '</option>').join('') + '</select></div>';
   document.body.insertBefore(b, document.body.firstChild);
   document.getElementById('demoViewAs').addEventListener('change', e => { try { sessionStorage.setItem('demoViewAs', e.target.value); } catch (x) {} location.hash = ''; location.reload(); });
+  document.getElementById('demoSport').addEventListener('change', e => { location.href = ROOT + 'demo/' + (e.target.value === 'pickleball' ? 'pickleball/' : ''); });
   const st = document.createElement('style');
   st.textContent = '#demoBanner{background:#f2c14e;color:#1a1200;padding:6px max(12px,env(safe-area-inset-right,0px)) 6px max(12px,env(safe-area-inset-left,0px));font-size:12.5px;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;justify-content:space-between;position:relative;z-index:150}' +
     '#demoBanner .db-row{display:flex;align-items:center;gap:8px;min-width:0}#demoBanner .db-tag{font-weight:800;letter-spacing:1px;background:#1a1200;color:#f2c14e;padding:2px 7px;border-radius:4px;font-size:11px;flex:none}' +
     '#demoBanner .db-txt{font-weight:500}#demoBanner label{font-weight:700;white-space:nowrap}#demoBanner select{width:auto;max-width:210px;padding:3px 8px;font-size:12.5px;background:#fff7dc;color:#1a1200;border:1px solid #c9a23a;border-radius:6px}' +
-    '@media print{#demoBanner{display:none!important}}';
+    '@media print{#demoBanner{display:none!important}}' +
+    '.logo-text{white-space:normal!important;font-size:15.5px!important;line-height:1.05!important}';   /* longer club name: wrap onto two lines */
   document.head.appendChild(st);
   notesUI();
 }
