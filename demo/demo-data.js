@@ -34,14 +34,31 @@ const REPL = NAME_REPL.concat([
   [/Hitting \/ rally/g, 'Drilling / dinking'], [/Hitting Partner/g, 'Practice Partner'], [/hitting partner/g, 'practice partner'],
   [/Working on my backhand, happy to feed balls too/g, 'Working on my third-shot drop, happy to drill dinks too'],
   [/6-3, 7-5/g, '11-7, 11-9'], [/e\.g\. 8\.50/g, 'e.g. 3.85'], [/e\.g\. 9\.00/g, 'e.g. 4.10'],
-  [/USTA /g, ''], [/NTRP/g, 'Level'], [/UTR/g, 'DUPR'], [/🎾/g, '🏓'],
+  [/USTA /g, ''], [/NTRP/g, 'Level'], [/UTR/g, 'DUPR'],
   [/Tennis/g, 'Pickleball'], [/tennis/g, 'pickleball']
 ] : []));
 const fx = str => REPL.reduce((t, [re, to]) => t.replace(re, to), str);
+// pickleball has no emoji (🏓 is ping-pong), so the tennis ball becomes a small paddle-and-ball drawing,
+// or is dropped where a drawing can't go (menus, plain-text messages)
+const fxS = str => PB ? fx(str).replace(/🎾 ?/g, '') : fx(str);
+const PB_ICON = '<svg viewBox="0 0 24 24" width="1.2em" height="1.2em" aria-hidden="true" style="vertical-align:-0.22em;overflow:visible"><g transform="rotate(-32 11 11)"><rect x="5.6" y="0.8" width="10.8" height="13.4" rx="3.2" fill="#2f6fe0"/><rect x="6.9" y="2.1" width="8.2" height="10.8" rx="2.3" fill="none" stroke="#9cc0ff" stroke-width=".7"/><rect x="9.6" y="13.6" width="2.8" height="8.6" rx="1.2" fill="#24324f"/></g><circle cx="18.1" cy="17.6" r="4.6" fill="#d6e04a" stroke="#97a52a" stroke-width=".6"/><g fill="#8b9a22"><circle cx="16.4" cy="16.2" r=".75"/><circle cx="19.5" cy="15.9" r=".75"/><circle cx="18.1" cy="18.4" r=".75"/><circle cx="20.4" cy="19.1" r=".6"/><circle cx="15.9" cy="19.3" r=".6"/></g></svg>';
+// header logo and notification icon: a paddle and ball instead of the tennis ball
+const PB_LOGO = '<svg viewBox="0 0 24 24"><g transform="rotate(-35 10 10)" fill="none" stroke="#fff" stroke-linecap="round"><rect x="5" y="1.2" width="10" height="12.2" rx="3" stroke-width="1.6"/><path d="M10 13.6v7" stroke-width="2.6"/></g><circle cx="18.2" cy="17.6" r="3.9" fill="#fff"/><g fill="#2f6fe0"><circle cx="17.1" cy="16.6" r=".65"/><circle cx="19.4" cy="16.9" r=".65"/><circle cx="18.1" cy="19.1" r=".65"/></g></svg>';
+const PB_APP_ICON = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="5" fill="#2f6fe0"/><g transform="translate(2.4 2.4) scale(.8)">' + PB_LOGO.replace(/^<svg[^>]*>|<\/svg>$/g, '') + '</g></svg>');
+if (PB) document.addEventListener('DOMContentLoaded', () => { document.querySelectorAll('.logo-icon').forEach(el => { el.innerHTML = PB_LOGO; }); document.querySelectorAll('link[rel="icon"],link[rel="apple-touch-icon"]').forEach(l => { l.href = PB_APP_ICON; }); });
+function pbIcons(n){
+  if (!PB || n.nodeValue.indexOf('🎾') < 0) return;
+  const par = n.parentNode; if (!par) return;
+  if (/^(OPTION|TITLE|TEXTAREA|text|tspan|title)$/.test(par.nodeName) || par.closest('svg')) { n.nodeValue = n.nodeValue.replace(/🎾 ?/g, ''); return; }
+  const frag = document.createDocumentFragment();
+  n.nodeValue.split('🎾').forEach((part, i) => { if (i) { const sp = document.createElement('span'); sp.className = 'pb-ico'; sp.innerHTML = PB_ICON; frag.appendChild(sp); } if (part) frag.appendChild(document.createTextNode(part)); });
+  par.replaceChild(frag, n);
+}
 function fxNode(n){
   if (n.nodeType === 3) {
     const par = n.parentNode; if (par && (par.nodeName === 'SCRIPT' || par.nodeName === 'STYLE' || (par.closest && par.closest('#demoBanner')))) return;
     const v = fx(n.nodeValue); if (v !== n.nodeValue) n.nodeValue = v;
+    pbIcons(n);
   } else if (n.nodeType === 1) {
     if (n.nodeName === 'SCRIPT' || n.nodeName === 'STYLE' || n.id === 'demoBanner') return;
     if (n.placeholder) { const v = fx(n.placeholder); if (v !== n.placeholder) n.placeholder = v; }
@@ -53,7 +70,7 @@ new MutationObserver(ms => { for (const m of ms) { if (m.type === 'characterData
 document.addEventListener('DOMContentLoaded', () => {
   fxNode(document.body); document.title = fx(document.title);
   // welcome messages are built as text for Gmail / Messages
-  ['welcomeText', 'welcomeEmail'].forEach(f => { const o = window[f]; if (typeof o === 'function') window[f] = function(){ const r = o.apply(this, arguments); return typeof r === 'string' ? fx(r) : r; }; });
+  ['welcomeText', 'welcomeEmail'].forEach(f => { const o = window[f]; if (typeof o === 'function') window[f] = function(){ const r = o.apply(this, arguments); return typeof r === 'string' ? fxS(r) : r; }; });
 });
 
 /* ───────────── in-memory Firebase (compat API subset the app uses) ───────────── */
@@ -375,7 +392,7 @@ function showNote(){
   let el = document.getElementById('demoToast');
   if (!el) {
     el = document.createElement('div'); el.id = 'demoToast'; el.setAttribute('role', 'status');
-    el.innerHTML = '<img src="' + ROOT + 'icon-192.png" alt=""><div class="dt-main"><div class="dt-head"><span>GOLD RIVER LADDER</span><span>now</span></div><div class="dt-title"></div><div class="dt-body"></div></div>';
+    el.innerHTML = '<img src="' + (PB ? PB_APP_ICON : ROOT + 'icon-192.png') + '" alt=""><div class="dt-main"><div class="dt-head"><span>GOLD RIVER LADDER</span><span>now</span></div><div class="dt-title"></div><div class="dt-body"></div></div>';
     document.body.appendChild(el);
     let sy = null;
     el.addEventListener('touchstart', e => { sy = e.touches[0].clientY; }, { passive: true });
@@ -411,7 +428,7 @@ function banner(){
   if (document.getElementById('demoBanner')) return;
   const b = document.createElement('div'); b.id = 'demoBanner';
   b.innerHTML = '<div class="db-row"><span class="db-tag">DEMO DATA</span><span class="db-txt">Made-up players and results. Changes reset when you reload.</span></div>' +
-    '<div class="db-row"><label for="demoSport">Sport</label><select id="demoSport"><option value="tennis"' + (PB ? '' : ' selected') + '>🎾 Tennis</option><option value="pickleball"' + (PB ? ' selected' : '') + '>🏓 Pickleball</option></select></div>' +
+    '<div class="db-row"><label for="demoSport">Sport</label><select id="demoSport"><option value="tennis"' + (PB ? '' : ' selected') + '>Tennis</option><option value="pickleball"' + (PB ? ' selected' : '') + '>Pickleball</option></select></div>' +
     '<div class="db-row"><label for="demoViewAs">Viewing as</label><select id="demoViewAs">' + VIEWERS.map(([id, label, role]) => '<option value="' + role + '"' + (id === viewAs ? ' selected' : '') + '>' + label + '</option>').join('') + '</select></div>';
   document.body.insertBefore(b, document.body.firstChild);
   document.getElementById('demoViewAs').addEventListener('change', e => { try { sessionStorage.setItem('demoViewAs', e.target.value); } catch (x) {} location.hash = ''; location.reload(); });
