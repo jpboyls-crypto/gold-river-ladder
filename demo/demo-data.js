@@ -304,14 +304,14 @@ for (let k = -2; k <= 13; k++) {
 mixerDates.forEach(d => {
   const ms = d.getTime(); const past = ms < T0; const soon = (ms - T0) / DAY;
   const n = past ? 34 + Math.floor(rnd() * 14) : soon < 10 ? 26 : soon < 40 ? 12 + Math.floor(rnd() * 6) : Math.floor(rnd() * 4);
-  ev({ type: 'mixer', title: d.toLocaleDateString('en-US', { month: 'long' }) + ' Ladder Mixer', date: ds(ms), start: '18:30', end: '21:00', price: 10, description: MIXER_DESC, rsvps: rsvp(n), series: 'mixer' });
+  ev({ type: 'mixer', title: d.toLocaleDateString('en-US', { month: 'long' }) + ' Ladder Mixer', date: ds(ms), start: '18:30', end: '21:00', price: 20, description: MIXER_DESC, rsvps: rsvp(n), series: 'mixer' });
 });
 ev({ type: 'social', title: 'Ladder Launch Kickoff BBQ', date: ds(T0 - 59 * DAY), start: '17:00', end: '20:00', price: 20, memberPrice: 15, description: 'Kick off the new ' + CLUB_SHORT + (PB ? ' Pickleball' : ' Tennis') + ' Ladder! Round-robin doubles, BBQ, drinks and a quick walkthrough of the ladder app.', rsvps: rsvp(61) });
 ev({ type: 'clinic', title: PB ? 'Third-Shot Drop & Reset Clinic' : 'Doubles Strategy Clinic with Jordan', date: ds(T0 - 24 * DAY), start: '09:00', end: '10:30', price: 25, memberPrice: 20, capacity: 16, description: PB ? 'Drops, resets and transition-zone patterns. 4.0 and above.' : 'Poaching, signals and serve-and-volley patterns. 4.0 and above.', rsvps: rsvp(16, appPeople.filter(p => +p.ntrp >= 4)) });
 ev({ type: 'clinic', title: 'Beginner-Friendly Drill Night', date: ds(T0 + 12 * DAY), start: '18:00', end: '19:30', price: 15, memberPrice: 10, capacity: 12, description: PB ? 'Relaxed dinking drills and game play for 3.0–3.5 players. Great for new ladder members.' : 'Relaxed drills and point play for 3.0–3.5 players. Great for new ladder members.', rsvps: rsvp(9, appPeople.filter(p => +p.ntrp <= 3.5)) });
 { const y = today0.getMonth() >= 10 ? today0.getFullYear() : today0.getFullYear();
   ev({ type: 'social', title: 'Holiday Ladder Party', date: y + '-12-12', start: '18:00', end: '22:00', price: 20, memberPrice: 15, description: 'Holiday doubles round robin, dinner, drinks and the first ladder awards of the season.', rsvps: rsvp(34) }); }
-[['03-27', 'Q1', 18], ['06-26', 'Q2', 6], ['09-25', 'Q3', 2], ['12-18', 'Q4', 0]].forEach(([md, q, n]) => ev({ type: 'tournament', title: q + ' Ladder Tournament', date: '2027-' + md, start: '08:00', end: '16:00', eligibility: 'All active ladder players — seeded by current ladder rank', description: 'Quarterly ladder tournament across all five draws. Format and draw sizes will be posted closer to the date.', rsvps: rsvp(n, ranked.filter(p => !p.paper)) }));
+[['03-27', 'Q1', 18], ['06-26', 'Q2', 6], ['09-25', 'Q3', 2], ['12-18', 'Q4', 0]].forEach(([md, q, n]) => ev({ type: 'tournament', title: q + ' Ladder Tournament', date: '2027-' + md, start: '08:00', end: '16:00', price: 45, eligibility: 'All active ladder players — seeded by current ladder rank', description: 'Quarterly ladder tournament across all five draws. Format and draw sizes will be posted closer to the date.', rsvps: rsvp(n, ranked.filter(p => !p.paper)) }));
 
 /* ───────────── sign-ups waiting for approval ───────────── */
 [['Theresa Wong', 'F', '3.5', ['Doubles', 'Mixed Doubles'], 'Weekday mornings'], ['Gabe Simmons', 'M', '4.0', ['Singles', 'Doubles'], 'Evenings'], ['Patricia Hall', 'F', '3.0', ['Social only'], 'Thursdays'], ['Leo Marchetti', 'M', '4.5', ['Singles'], 'Early mornings']]
@@ -352,12 +352,12 @@ const NOTES_FOR = {
     () => { const t = meP.gender === 'F' ? 'wd' : 'md'; const pool = ranked.filter(p => inDraw(p, t) && p.active && !p.paper && p !== meP); const pa = near(pool, meP), o1 = near(pool.filter(p => p !== pa), meP), o2 = near(pool.filter(p => p !== pa && p !== o1), o1);
       docRef('matches', 'live' + (++nSeq)).set({ p1: o1._id, p1Partner: o2._id, p2: meP._id, p2Partner: pa._id, ladder: t, score: SC.note, winner: o1._id, date: ds(T0), submittedBy: o1._id, status: 'pending', createdAt: ts(Date.now()) });
       return { title: 'Confirm your score', body: nm(o1) + ' entered ' + SC.note + ' for today’s doubles. Confirm within 48 hours.', act: go('Home') }; },
-    () => { const e = nextEvent('mixer'); return { title: 'Ladder Mixer ' + (e ? whenTxt(e) : 'this Friday'), body: (e ? e.title : 'Ladder Mixer') + ' · 6:30 PM · $10. ' + (e ? e.rsvps.length : 26) + ' members going.', act: go('Events') }; }
+    () => { const e = nextEvent('mixer'); return { title: 'Ladder Mixer ' + (e ? whenTxt(e) : 'this Friday'), body: (e ? e.title : 'Ladder Mixer') + ' · 6:30 PM · $20. ' + (e ? e.rsvps.length : 26) + ' members going.', act: go('Events') }; }
   ],
   social: [
     () => { const e = nextEvent('social'); return { title: 'New event posted', body: (e ? e.title + ' · ' + whenTxt(e) : 'Holiday Ladder Party') + '. Member price $15.', act: go('Events') }; },
     () => { const r = rival('wd', meP.gender === 'F' ? meP : ranked.find(p => p.gender === 'F')) || ranked[0]; return { title: 'New hitting partner post', body: nm(r) + ' is looking for a hit at your level this week.', act: go('Practice') }; },
-    () => { const e = nextEvent('mixer'); return { title: 'Ladder Mixer ' + (e ? whenTxt(e) : 'this Friday'), body: 'Drop-in point play, food and drinks · 6:30 PM · $10.', act: go('Events') }; }
+    () => { const e = nextEvent('mixer'); return { title: 'Ladder Mixer ' + (e ? whenTxt(e) : 'this Friday'), body: 'Drop-in point play, food and drinks · 6:30 PM · $20.', act: go('Events') }; }
   ]
 };
 const myNotes = viewAs === jordan._id ? NOTES_FOR.admin : meP && meP.social ? NOTES_FOR.social : NOTES_FOR.member;

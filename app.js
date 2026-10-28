@@ -31,6 +31,8 @@ const JR_ADMIN_EMAILS = [];
 const WIN = 18, LOSS = -12;
 // ── ladder rules ──
 const SEASON_START   = '2027-01-01'; // decay and the launch "open challenge" window are measured from here
+const MIXER_PRICE    = 20;  // Monthly Ladder Mixer, per player
+const TOURNEY_PRICE  = 45;  // quarterly in-house tournament entry
 const CONFIRM_HOURS  = 48;  // unconfirmed scores count automatically after this
 const CHALLENGE_DAYS = 7;   // a challenge must be played within this many days
 const DECAY_GRACE    = 30;  // days without a confirmed match before sliding starts
@@ -1259,12 +1261,12 @@ function renderEvents(){
     const moved=MIXER_DATES.filter(x=>x[1]&&x[0]>=today()).map(x=>`${fmtShort(dayMs(x[0]))} (${x[1]})`);
     boxes.push(`<div class="card" style="padding:14px 16px;border-color:var(--purple)">
       <div style="font-weight:700">🥂 Set up the Monthly Ladder Mixers</div>
-      <div style="font-size:12.5px;color:var(--fg2);margin:4px 0 10px;line-height:1.5">Adds a mixer on the last Friday of every month through December 2027, 6:30–9:00 PM, $10 per player, with sign-up. Holiday clashes move earlier: ${moved.join('; ')}. You can edit or delete any of them afterwards.</div>
+      <div style="font-size:12.5px;color:var(--fg2);margin:4px 0 10px;line-height:1.5">Adds a mixer on the last Friday of every month through December 2027, 6:30–9:00 PM, $${MIXER_PRICE} per player, with sign-up. Holiday clashes move earlier: ${moved.join('; ')}. You can edit or delete any of them afterwards.</div>
       <button class="btn btn-primary btn-sm" onclick="seedMixers()">Add the mixers</button></div>`);
   }
   if(state.isAdmin&&!hasQ&&!JR) boxes.push(`<div class="card" style="padding:14px 16px;border-color:var(--gold)">
       <div style="font-weight:700">🏆 Set up the 2027 quarterly tournaments</div>
-      <div style="font-size:12.5px;color:var(--fg2);margin:4px 0 10px;line-height:1.5">Adds four tournaments: Sat Mar 27, Sat Jun 26, Sat Sep 25 and Sat Dec 18 (moved off Christmas). You can edit any date, time or detail afterwards.</div>
+      <div style="font-size:12.5px;color:var(--fg2);margin:4px 0 10px;line-height:1.5">Adds four tournaments ($${TOURNEY_PRICE} entry): Sat Mar 27, Sat Jun 26, Sat Sep 25 and Sat Dec 18 (moved off Christmas). You can edit any date, time or detail afterwards.</div>
       <button class="btn btn-primary btn-sm" onclick="seedQuarterlies()">Add all four</button></div>`);
   $('seedBox').hidden=!boxes.length;
   $('seedBox').innerHTML=boxes.join('<div style="height:10px"></div>');
@@ -1302,7 +1304,7 @@ function openEventForm(id){
   $('sheetName').textContent=e?'Edit event':'New event';
   $('sheetBody').innerHTML=`
     <div class="form-group"><label class="form-label">Type</label>
-      <select id="evType" onchange="$('evEligGroup').hidden=this.value!=='tournament'; if(this.value==='mixer'&&!$('evDesc').value){ $('evDesc').value=MIXER_DESC; $('evStart').value='18:30'; $('evEnd').value='21:00'; $('evPrice').value=10; }">
+      <select id="evType" onchange="$('evEligGroup').hidden=this.value!=='tournament'; if(this.value==='mixer'&&!$('evDesc').value){ $('evDesc').value=MIXER_DESC; $('evStart').value='18:30'; $('evEnd').value='21:00'; $('evPrice').value=MIXER_PRICE; }">
         ${Object.entries(EVENT_TYPES).map(([k,T])=>`<option value="${k}" ${(e?e.type:(JR?'matchplay':'social'))===k?'selected':''}>${T.icon} ${T.label}</option>`).join('')}
       </select></div>
     <div class="form-group"><label class="form-label">Title</label><input type="text" id="evTitle" value="${v('title')}" placeholder="e.g. Holiday Ladder Mixer"></div>
@@ -1370,7 +1372,7 @@ async function seedMixers(){
   try{
     for(const [date] of todo){
       await db.collection(COL('events')).add({type:'mixer',title:mixerTitle(date),date,start:'18:30',end:'21:00',location:'Gold River Sports Club',
-        eligibility:'',description:MIXER_DESC,price:10,memberPrice:null,rsvpOn:true,capacity:null,rsvps:[],series:'mixer',createdBy:state.email,createdAt:FieldValue.serverTimestamp()});
+        eligibility:'',description:MIXER_DESC,price:MIXER_PRICE,memberPrice:null,rsvpOn:true,capacity:null,rsvps:[],series:'mixer',createdBy:state.email,createdAt:FieldValue.serverTimestamp()});
     }
     toast(`${todo.length} monthly mixers added 🥂`);
   }catch(err){ toast('Could not add: '+err.message); }
@@ -1381,7 +1383,7 @@ async function seedQuarterlies(){
     for(const [date,q] of qs){
       await db.collection(COL('events')).add({type:'tournament',title:`${q} Ladder Tournament`,date,start:'08:00',end:'16:00',location:'Gold River Sports Club',
         eligibility:'All active ladder players \u2014 seeded by current ladder rank',description:'Quarterly ladder tournament across all five draws. Format and draw sizes will be posted closer to the date.',
-        rsvpOn:true,capacity:null,rsvps:[],createdBy:state.email,createdAt:FieldValue.serverTimestamp()});
+        price:TOURNEY_PRICE,rsvpOn:true,capacity:null,rsvps:[],createdBy:state.email,createdAt:FieldValue.serverTimestamp()});
     }
     toast('2027 quarterly tournaments added 🏆');
   }catch(err){ toast('Could not add: '+err.message); }
@@ -1433,8 +1435,8 @@ function renderRules(){
   ])}
   ${sec('Practice, events & tournaments',[
     q('What’s the Practice tab?',`<p>A place to find hitting partners, with no points involved. Post the days and times you’re free and the kind of session you want; members within your chosen level range see it under <b>Matches My Level</b> and can tap <b>I’m in</b>.</p>`),
-    q('When are the quarterly tournaments?',tourneys.length?`<p>${tourneys.map(e=>`<b>${esc(e.title)}</b> — ${esc(fmtWhen(e))}`).join('<br>')}</p><p>Details, eligibility and sign-up are on the <b>Events</b> tab.</p>`:`<p>One at the end of each quarter. Dates, eligibility and sign-up will be posted on the <b>Events</b> tab.</p>`),
-    q('What’s the Monthly Ladder Mixer?',`<p>A drop-in social on the <b>last Friday of every month at 6:30 PM</b>: point play, food and drinks. Matches you play can count toward the ladder (enter the score in the app afterwards), or just use it to hit and meet other members. <b>$10 per player.</b> Sign up on the Events tab so Jordan knows how many to expect.</p>`),
+    q('When are the quarterly tournaments?',tourneys.length?`<p>${tourneys.map(e=>`<b>${esc(e.title)}</b> — ${esc(fmtWhen(e))}`).join('<br>')}</p><p>Entry is <b>$${TOURNEY_PRICE}</b>. Details, eligibility and sign-up are on the <b>Events</b> tab.</p>`:`<p>One at the end of each quarter, <b>$${TOURNEY_PRICE}</b> entry. Dates, eligibility and sign-up will be posted on the <b>Events</b> tab.</p>`),
+    q('What’s the Monthly Ladder Mixer?',`<p>A drop-in social on the <b>last Friday of every month at 6:30 PM</b>: point play, food and drinks. Matches you play can count toward the ladder (enter the score in the app afterwards), or just use it to hit and meet other members. <b>$${MIXER_PRICE} per player.</b> Sign up on the Events tab so Jordan knows how many to expect.</p>`),
     q('How do I sign up for an event?',`<p>Open the <b>Events</b> tab and tap <b>Enter</b> (tournaments) or <b>I’m going</b> (socials). You can also add it to your Apple or Google calendar from there.</p>`),
   ])}
   ${sec('Fees',[
