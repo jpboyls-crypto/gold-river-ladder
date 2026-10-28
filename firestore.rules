@@ -14,9 +14,9 @@ service cloud.firestore {
     match /players/{pid} {
       allow read:   if canRead();
       allow create, delete: if isAdmin();
-      // admin edits anything; a member may edit only their own contact fields
+      // admin edits anything; a member may edit only their own contact fields and contact-privacy switches
       allow update: if isAdmin()
-                    || (isMember() && pid == email() && onlyKeys(['phone', 'availability']));
+                    || (isMember() && pid == email() && onlyKeys(['phone', 'availability', 'hidePhone', 'hideEmail']));
     }
 
     // ── matches: anyone who played in it can record it; only admin edits/removes ──
@@ -108,7 +108,7 @@ service cloud.firestore {
     match /jr_players/{pid} {
       allow read: if jrRead();
       allow create, delete: if jrAdmin();
-      allow update: if jrAdmin() || (myKid(pid) && onlyKeys(['phone', 'availability']));
+      allow update: if jrAdmin() || (myKid(pid) && onlyKeys(['phone', 'availability', 'hidePhone', 'hideEmail']));
     }
     match /jr_matches/{mid} {
       allow read: if jrRead();

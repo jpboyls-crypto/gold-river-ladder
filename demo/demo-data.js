@@ -16,7 +16,7 @@ const PB = window.DEMO_SPORT === 'pickleball';
 const ROOT = window.DEMO_ROOT || '../';
 const CLUB = 'Spare Time Indoor Center', CLUB_SHORT = 'Spare Time Indoor';
 const REPL = [
-  [/Gold River and club-wide Spare Time members/g, 'Spare Time members'], [/Gold River Sports Club/g, CLUB], [/Gold River SC\b/g, CLUB_SHORT], [/GOLD RIVER/g, CLUB_SHORT.toUpperCase()], [/Gold River/g, CLUB_SHORT]
+  [/Gold River and club-wide Spare Time members/g, 'Spare Time members'], [/Gold River Sports Club/g, CLUB], [/GOLD RIVER SPORTS CLUB/g, CLUB.toUpperCase()], [/Gold River SC\b/g, CLUB_SHORT], [/GOLD RIVER/g, CLUB_SHORT.toUpperCase()], [/Gold River/g, CLUB_SHORT]
 ].concat(PB ? [
   [/([Bb])est of 3 sets, with a 10-point tiebreak in place of a third set/g, '$1est of 3 games to 11, win by 2'],
   [/a new can of balls and the winner keeps them/g, 'a new ball and the winner keeps it'],
@@ -245,6 +245,8 @@ recentPending.forEach(([a, b], i) => addMatch('ms', [a], [b], T0 - i * DAY, { st
   const m = addMatch('ms', [opp], [jordan], T0 - DAY, { status: 'pending', createdAt: ts(NOW - 9 * 3600000) });
   m.p1 = opp._id; m.p2 = jordan._id; m.winner = opp._id; m.submittedBy = opp._id; m.score = SC.pend; }
 matches.forEach(([id, m]) => put('matches', id, m));
+// a few members keep their contact info private (Profile → My contact info)
+players.filter(p => !p.paper && !p.social && p !== jordan).filter((p, i) => i % 9 === 4).forEach((p, i) => { if (i % 2) p.hideEmail = true; else p.hidePhone = true; });
 players.forEach(p => put('players', p._id, p));
 
 /* ───────────── challenges ───────────── */

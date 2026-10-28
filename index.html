@@ -284,6 +284,8 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
 .pv-dh{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid;padding-bottom:3px;margin-bottom:2px}
 .pv-dh h2{font-family:'Barlow Condensed',Inter,sans-serif;font-weight:800;font-size:15pt;text-transform:uppercase;letter-spacing:.3px}
 .pv-dh span{font-size:8pt;color:#3a4256}
+#printView .pv-cs td{padding:2.5px 4px;font-size:9pt}#printView .pv-cs th{padding:2px 4px}.pv-cs .pv-dh h2{font-size:13pt}.pv-cs .pv-draw{margin-bottom:10px!important}
+.priv-row{display:flex;align-items:center;gap:10px;font-size:14px;cursor:pointer;margin-bottom:10px}.priv-row input{width:auto;flex:none;margin:0}
 #printView table{width:100%;border-collapse:collapse}
 #printView th{font-size:7.2pt;text-transform:uppercase;letter-spacing:.8px;color:#3a4256;font-weight:600;text-align:left;padding:4px 4px 3px}
 #printView td{padding:4px;border-bottom:1px solid #dfe3ec;vertical-align:middle;color:#0b0f1a}
@@ -613,6 +615,9 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
       <div style="font-size:12.5px;color:var(--fg2);margin-bottom:12px;line-height:1.5">Other ladder members see this so they can set up matches with you.</div>
       <div class="form-group"><label class="form-label">Mobile phone</label><input type="tel" id="profPhone" inputmode="tel" placeholder="(916) 555-1234"></div>
       <div class="form-group"><label class="form-label">Usual availability</label><input type="text" id="profAvail" placeholder="Weekday evenings, Sat mornings"></div>
+      <label class="priv-row"><input type="checkbox" id="profShowPhone" checked onchange="saveContact()"><span>Show my phone number to ladder members</span></label>
+      <label class="priv-row"><input type="checkbox" id="profShowEmail" checked onchange="saveContact()"><span>Show my email to ladder members</span></label>
+      <div style="font-size:12px;color:var(--fg2);line-height:1.5;margin:2px 0 14px">Turn one off to keep it private. Members can still reach you by sending a challenge in the app, and the ladder admin can always see your contact info.</div>
       <button class="btn btn-secondary btn-full" onclick="saveContact()">Save</button>
     </div>
     <div class="divider" style="margin-top:20px"></div>
@@ -673,6 +678,7 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
       <button class="btn btn-secondary" onclick="openAdminScore()">✍️ Enter a score</button>
       <button class="btn btn-secondary" onclick="openPrintStandings()">🖨️ Print standings</button>
+      <button class="btn btn-secondary" style="grid-column:1/-1" onclick="openChallengeSheets()">📞 Print challenge sheets</button>
     </div>
     <div class="tabs" id="adminTabs">
       <div class="tab active" onclick="switchAdmin('signups',this)">Sign-ups<span class="badge-count" id="signupCount" hidden>0</span></div>
@@ -838,6 +844,6 @@ main{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));min-height:calc
 <!-- TOAST -->
 <div id="toast" style="position:fixed;bottom:calc(72px + env(safe-area-inset-bottom,0px) + 12px);left:50%;transform:translateX(-50%) translateY(10px);background:#222b3d;color:#fff;padding:10px 20px;border-radius:30px;font-size:14px;font-weight:600;z-index:500;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;white-space:nowrap"></div>
 
-<script src="app.js?v=20261026u"></script>
+<script src="app.js?v=20261028a"></script>
 </body>
 </html>

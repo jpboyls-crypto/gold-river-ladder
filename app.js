@@ -252,6 +252,11 @@ function rerender(){
 //  DATA HELPERS (ratings derived from matches)
 // ═══════════════════════════════════════════
 function isPaper(p){ return !!(p&&p.paper); }
+// ── contact privacy: each member chooses whether other members see their phone and email ──
+// The admin and the player themself (or their parent) always see it; paper players' phones always show.
+function ownsPlayer(p){ return p.id===state.email||(JR&&(state.kids||[]).some(k=>k.id===p.id)); }
+function visPhone(p){ return p&&p.phone&&(isPaper(p)||!p.hidePhone||state.isAdmin||ownsPlayer(p))?p.phone:''; }
+function visEmail(p){ return p&&p.email&&!isPaper(p)&&(!p.hideEmail||state.isAdmin||ownsPlayer(p))?p.email:''; }
 function getPlayer(id){ return state.players.find(p=>p.id===id) }
 function me(){ return getPlayer(state.email) }
 function displayName(id){ const p=getPlayer(id); return p?p.name:(id||'Unknown'); }
@@ -450,8 +455,8 @@ function renderHome(){
         ${isExpired(c)?'':incoming&&c.status==='pending'?`<div class="match-actions">
           <button class="btn btn-green btn-sm" onclick="respondChallenge('${c.id}','accepted')">Accept</button>
           <button class="btn btn-secondary btn-sm" onclick="respondChallenge('${c.id}','declined')">Decline</button>
-          ${other&&other.phone?`<a class="btn btn-secondary btn-sm" href="sms:${esc(other.phone.replace(/\\D/g,''))}">Text</a>`:''}
-        </div>`:`<div class="match-actions">${c.status==='accepted'?bookBtn(c.date):''}${c.status==='accepted'?`<button class="btn btn-secondary btn-sm" onclick="toggleRain('${c.id}')">🌧️ Rained out</button>`:''}${c.from===m.id?`<button class="btn btn-secondary btn-sm" onclick="cancelChallenge('${c.id}')">Withdraw</button>`:''}${other&&other.phone?`<a class="btn btn-secondary btn-sm" href="sms:${esc(other.phone.replace(/\\D/g,''))}">Text ${JR?'parent':esc(other.name.split(' ')[0])}</a>`:''}</div>${c.status==='accepted'?rainPanel(c):''}`}
+          ${visPhone(other)?`<a class="btn btn-secondary btn-sm" href="sms:${esc(visPhone(other).replace(/\\D/g,''))}">Text</a>`:''}
+        </div>`:`<div class="match-actions">${c.status==='accepted'?bookBtn(c.date):''}${c.status==='accepted'?`<button class="btn btn-secondary btn-sm" onclick="toggleRain('${c.id}')">🌧️ Rained out</button>`:''}${c.from===m.id?`<button class="btn btn-secondary btn-sm" onclick="cancelChallenge('${c.id}')">Withdraw</button>`:''}${visPhone(other)?`<a class="btn btn-secondary btn-sm" href="sms:${esc(visPhone(other).replace(/\\D/g,''))}">Text ${JR?'parent':esc(other.name.split(' ')[0])}</a>`:''}</div>${c.status==='accepted'?rainPanel(c):''}`}
       </div>`;
     }).join('');
   }
@@ -558,12 +563,13 @@ function openPlayerSheet(id){
   const utrParts=[];
   if(p.utrSingles) utrParts.push(`<span class="utr-badge"><span class="utr-label">UTR-S</span>${Number(p.utrSingles).toFixed(2)}</span>`);
   if(p.utrDoubles) utrParts.push(`<span class="utr-badge"><span class="utr-label">UTR-D</span>${Number(p.utrDoubles).toFixed(2)}</span>`);
-  const digits=(p.phone||'').replace(/\D/g,'');
+  const ph=visPhone(p), em=visEmail(p), digits=ph.replace(/\D/g,'');
   const contact=!isMe?`<div class="card" style="padding:12px 14px;margin-bottom:14px">
       <div style="font-size:10px;color:var(--fg2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">${JR?'Parent contact'+(p.parentName?' · '+esc(p.parentName):''):'Contact'}</div>
       ${isPaper(p)?`<div style="font-size:13px;line-height:1.5;margin-bottom:8px;padding:8px 10px;border-radius:8px;background:rgba(232,184,75,.14)">📞 <b>${esc(p.name.split(' ')[0])} plays without the app.</b> Call or text to set up a match. Either of you can turn in a paper score card, or you can enter the score in the app.</div>`:''}
-      ${p.phone?`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px"><span style="user-select:all">${esc(p.phone)}</span><span style="display:flex;gap:6px"><a class="btn btn-secondary btn-sm" href="sms:${digits}">Text</a><a class="btn btn-secondary btn-sm" href="tel:${digits}">Call</a></span></div>`:''}
-      ${p.email?`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="user-select:all;font-size:13px;overflow:hidden;text-overflow:ellipsis">${esc(p.email)}</span><a class="btn btn-secondary btn-sm" href="mailto:${esc(p.email)}">Email</a></div>`:''}
+      ${ph?`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px"><span style="user-select:all">${esc(ph)}</span><span style="display:flex;gap:6px"><a class="btn btn-secondary btn-sm" href="sms:${digits}">Text</a><a class="btn btn-secondary btn-sm" href="tel:${digits}">Call</a></span></div>`:''}
+      ${em?`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="user-select:all;font-size:13px;overflow:hidden;text-overflow:ellipsis">${esc(em)}</span><a class="btn btn-secondary btn-sm" href="mailto:${esc(em)}">Email</a></div>`:''}
+      ${!ph&&!em&&!isPaper(p)?`<div style="font-size:13px;color:var(--fg2);line-height:1.5">🔒 ${esc(p.name.split(' ')[0])} keeps ${JR?'their parent\u2019s':'their'} contact info private. Send a challenge in the app to set up a match.</div>`:''}
       ${p.availability?`<div style="font-size:12.5px;color:var(--fg2);margin-top:8px">Usually free: ${esc(p.availability)}</div>`:''}
     </div>`:'';
   $('sheetBody').innerHTML=`
@@ -766,9 +772,10 @@ function renderProfile(){
   $('historyList').innerHTML=hist.length?recentMatchesHtml(hist,m.id):`<div class="empty"><div class="empty-title">No match history yet</div></div>`;
   if(document.activeElement!==$('profPhone')) $('profPhone').value=m.phone||'';
   if(document.activeElement!==$('profAvail')) $('profAvail').value=m.availability||'';
+  $('profShowPhone').checked=!m.hidePhone; $('profShowEmail').checked=!m.hideEmail;
 }
 async function saveContact(){
-  try{ await db.collection(COL('players')).doc(state.email).update({phone:$('profPhone').value.trim().slice(0,30),availability:$('profAvail').value.trim().slice(0,120)}); toast('Saved'); }
+  try{ await db.collection(COL('players')).doc(state.email).update({phone:$('profPhone').value.trim().slice(0,30),availability:$('profAvail').value.trim().slice(0,120),hidePhone:!$('profShowPhone').checked,hideEmail:!$('profShowEmail').checked}); toast('Saved'); }
   catch(e){ toast('Could not save: '+e.message); }
 }
 
@@ -805,7 +812,7 @@ function renderPractice(){
         <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:8px;flex-wrap:wrap">
           <div style="font-size:12px;color:var(--fg2)">${responses.length?`${responses.length} interested${mine?': '+responses.map(id=>esc(displayName(id).split(' ')[0])).join(', '):''}`:'No replies yet'}</div>
           ${mine?`<button class="btn btn-secondary btn-sm" onclick="closeHit('${h.id}')">Close</button>`
-               :`<span style="display:flex;gap:6px"><button class="btn ${replied?'btn-secondary':'btn-primary'} btn-sm" onclick="toggleInterest('${h.id}')">${replied?'Interested ✓':"I'm in"}</button>${p.phone?`<a class="btn btn-secondary btn-sm" href="sms:${esc(p.phone.replace(/\\D/g,''))}">Text</a>`:''}</span>`}
+               :`<span style="display:flex;gap:6px"><button class="btn ${replied?'btn-secondary':'btn-primary'} btn-sm" onclick="toggleInterest('${h.id}')">${replied?'Interested ✓':"I'm in"}</button>${visPhone(p)?`<a class="btn btn-secondary btn-sm" href="sms:${esc(visPhone(p).replace(/\\D/g,''))}">Text</a>`:''}</span>`}
         </div></div></div></div>`;
   }).join('')}</div>`;
 }
@@ -1557,10 +1564,46 @@ function buildStandings(layout){
   const p2=`${printDraw('md',prev.md)}${printDraw('wd',prev.wd)}${layout.mixedOwnPage?'':mx}`;
   return page(1,p1)+page(2,p2)+(layout.mixedOwnPage?page(3,mx):'');
 }
+// ── challenge sheets: one page per paper player, listing who they can challenge and how to reach them ──
+// Contact info follows each member's privacy switches (admins see everything in the app, but this page is handed out).
+function sheetPhone(p){ return isPaper(p)||!p.hidePhone?(p.phone||''):''; }
+function challengeSheetPage(p,asOf){
+  const club=CLUB_NAME_PRINT;
+  const blocks=playerLadders(p).map(t=>{
+    const list=getRanked(t), i=list.findIndex(x=>x.id===p.id); if(i<0) return '';
+    const c=PRINT_COLOR[kindOf(t)], open=inOpenWindow(p);
+    const targets=open?list.slice(Math.max(0,i-5),i).concat(list.slice(i+1,i+3)):list.slice(Math.max(0,i-4),i);
+    const below=list.slice(i+1,i+5);
+    const row=x=>{ const ph=sheetPhone(x); return `<tr><td class="pv-rk">${list.indexOf(x)+1}</td><td class="pv-nm">${esc(x.name)}${isPaper(x)?' 📞':''}</td><td class="pv-c">${esc(x.ntrp||'')}</td>
+      <td style="white-space:nowrap">${ph?esc(ph):'<span style="color:#6b7385">Ask the front desk</span>'}</td><td style="font-size:8pt;color:#3a4256">${esc(x.availability||'')}</td></tr>`; };
+    return `<section class="pv-draw pv-wide" style="margin-bottom:14px">
+      <div class="pv-dh" style="border-color:${c}"><h2 style="color:${c}">${LADDERS[t].label}</h2><span>You're <b>#${i+1}</b> of ${list.length} · ${getRating(p,t)} pts</span></div>
+      <div style="font-size:9pt;margin:6px 0 4px;color:#1d2433">${open?`<b>Open challenges until ${esc(fmtShort(openUntilMs(p)))}:</b> you can challenge anyone in this draw. The closest players are listed.`:i===0?'<b>You’re #1.</b> Nobody is above you, so wait for challengers.':'<b>You can challenge:</b> anyone up to 4 spots above you.'}</div>
+      ${targets.length?`<table><thead><tr><th class="pv-rk">#</th><th>Player</th><th class="pv-c">${JR?'Ball':'NTRP'}</th><th>Phone</th><th>Usually free</th></tr></thead><tbody>${targets.map(row).join('')}</tbody></table>`:''}
+      ${below.length?`<div style="font-size:8.5pt;color:#3a4256;margin-top:5px">May call you to play: ${below.map(x=>esc(x.name)).join(', ')}</div>`:''}
+    </section>`;
+  }).join('');
+  return `<div class="pv-page pv-cs"><header class="pv-header"><div><div class="pv-club">${club}</div><h1>${esc(p.name)}</h1><div style="font-family:'Barlow Condensed',Inter,sans-serif;font-weight:800;font-size:13pt;letter-spacing:.5px;text-transform:uppercase;color:#3a4256">Ladder challenge sheet</div><div class="pv-asof">As of ${esc(asOf)}</div></div></header>
+    <div style="flex:1">${blocks||'<p style="font-size:10pt">Not in a ranked draw yet.</p>'}</div>
+    <footer class="pv-footer"><div class="pv-how"><b>How to play a challenge:</b> Call or text a player above, agree on a time, and play within ${CHALLENGE_DAYS} days. Book a court at the front desk or in Club Automation (48 hours ahead). In doubles, bring a partner from your draw.<br>
+    <b>After the match:</b> fill out a Match Score Card at the front desk, have your opponent initial it, and leave it in ${esc(ADMIN_FIRST)}'s box. It counts right away.<br>
+    <span style="color:#3a4256">Phone numbers are shared for ladder matches only. 📞 = also plays without the app.</span></div></footer></div>`;
+}
+function openChallengeSheets(){
+  const paper=state.players.filter(p=>isPaper(p)&&p.active!==false&&playerLadders(p).length).sort((a,b)=>a.name.localeCompare(b.name));
+  if(!paper.length){ toast('No paper players on the ladder right now'); return; }
+  const asOf=new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  const pv=$('printView'); pv.style.zoom=1; PV_NAME='Challenge-Sheets';
+  pv.innerHTML=paper.map(p=>challengeSheetPage(p,asOf)).join('');
+  $('printOverlay').hidden=false; document.body.style.overflow='hidden';
+  fitPrintPreview();
+}
 const PAGE_PX=1056; // 11in at 96px/in
 function pagesOverflow(){ return [...document.querySelectorAll('#printView .pv-page')].map(pg=>pg.scrollHeight>PAGE_PX+1); }
+let PV_NAME='Standings';
+const CLUB_NAME_PRINT='GOLD RIVER SPORTS CLUB', ADMIN_FIRST='Jordan';
 function openPrintStandings(){
-  const pv=$('printView'); pv.style.zoom=1;
+  const pv=$('printView'); pv.style.zoom=1; PV_NAME='Standings';
   $('printOverlay').hidden=false;
   let layout={mixedOwnPage:false,highlights:true};
   pv.innerHTML=buildStandings(layout);
@@ -1586,7 +1629,7 @@ async function savePdfStandings(btn){
   try{
     await loadHtml2pdf();
     el.style.zoom=1; el.classList.add('pv-capturing');
-    await html2pdf().set({margin:0,filename:`Gold-River-Ladder-Standings-${today()}.pdf`,image:{type:'jpeg',quality:0.95},
+    await html2pdf().set({margin:0,filename:`Gold-River-Ladder-${PV_NAME}-${today()}.pdf`,image:{type:'jpeg',quality:0.95},
       html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},jsPDF:{unit:'in',format:'letter',orientation:'portrait'},
       pagebreak:{mode:['css'],before:'.pv-page + .pv-page',avoid:'tr'}}).from(el).save();
     toast('PDF saved');
