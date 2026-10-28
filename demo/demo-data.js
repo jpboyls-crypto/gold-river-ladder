@@ -15,7 +15,16 @@ const DAY = 86400000;
 const PB = window.DEMO_SPORT === 'pickleball';
 const ROOT = window.DEMO_ROOT || '../';
 const CLUB = 'Spare Time Indoor Center', CLUB_SHORT = 'Spare Time Indoor';
-const REPL = [
+// the demo is shared outside the club: show "Admin" and a made-up email instead of Jordan's
+const NAME_REPL = [
+  [/jpboyls@gmail\.com/g, 'ladder.admin@example.com'],
+  [/Hi Jordan,/g, 'Hi Admin,'],
+  [/Jordan Boyls(?:,|\n)\s*Director of Tennis/g, 'Ladder Admin'],
+  [/Jordan Boyls['’] box/g, 'the Admin’s box'], [/Jordan Boyls/g, 'Admin'], [/Jordan['’]s/g, 'the admin’s'],
+  [/(^|[.!?:]\s+|\n)Jordan\b/g, '$1The admin'], [/\bJordan\b/g, 'the admin'],
+  [/admin know\. He can/g, 'admin know. They can'], [/admin and he’ll/g, 'admin and they’ll']
+];
+const REPL = NAME_REPL.concat([
   [/Gold River and club-wide Spare Time members/g, 'Spare Time members'], [/Gold River Sports Club/g, CLUB], [/GOLD RIVER SPORTS CLUB/g, CLUB.toUpperCase()], [/Gold River SC\b/g, CLUB_SHORT], [/GOLD RIVER/g, CLUB_SHORT.toUpperCase()], [/Gold River/g, CLUB_SHORT]
 ].concat(PB ? [
   [/([Bb])est of 3 sets, with a 10-point tiebreak in place of a third set/g, '$1est of 3 games to 11, win by 2'],
@@ -27,7 +36,7 @@ const REPL = [
   [/6-3, 7-5/g, '11-7, 11-9'], [/e\.g\. 8\.50/g, 'e.g. 3.85'], [/e\.g\. 9\.00/g, 'e.g. 4.10'],
   [/USTA /g, ''], [/NTRP/g, 'Level'], [/UTR/g, 'DUPR'], [/🎾/g, '🏓'],
   [/Tennis/g, 'Pickleball'], [/tennis/g, 'pickleball']
-] : []);
+] : []));
 const fx = str => REPL.reduce((t, [re, to]) => t.replace(re, to), str);
 function fxNode(n){
   if (n.nodeType === 3) {
@@ -160,7 +169,7 @@ function mkPlayer(gender, opts){
 }
 // the admin, playing too
 const jordan = mkPlayer('M', { name: 'Jordan Boyls', id: 'jpboyls@gmail.com', ntrp: '4.5', singles: true, doubles: true, mixed: true, joined: 66 });
-if (PB) { jordan.utrSingles = 4.52; jordan.utrDoubles = 4.71; } else { jordan.utrSingles = 9.24; jordan.utrDoubles = 9.8; } jordan.availability = 'Evenings after lessons';
+if (PB) { jordan.utrSingles = 4.52; jordan.utrDoubles = 4.71; } else { jordan.utrSingles = 9.24; jordan.utrDoubles = 9.8; } jordan.availability = 'Evenings after lessons'; jordan.initials = 'AD';
 for (let i = 0; i < 44; i++) mkPlayer('M');
 for (let i = 0; i < 36; i++) mkPlayer('F');
 // newer members (joined in the last ~3 weeks)
@@ -320,7 +329,7 @@ ev({ type: 'clinic', title: 'Beginner-Friendly Drill Night', date: ds(T0 + 12 * 
 /* ───────────── who you're viewing as ───────────── */
 const member = ranked.filter(p => p.gender === 'F' && p.singles && p.doubles && p.active && !p.paper).sort((a, b) => b._skill - a._skill)[6] || ranked[5];
 const social = players.find(p => p.social);
-const VIEWERS = [[jordan._id, 'Jordan Boyls (admin)', 'admin'], [member._id, member.name + ' (member)', 'member'], [social._id, social.name + ' (social member)', 'social']];
+const VIEWERS = [[jordan._id, 'Admin', 'admin'], [member._id, member.name + ' (member)', 'member'], [social._id, social.name + ' (social member)', 'social']];
 let viewAs = jordan._id;
 try { const v = sessionStorage.getItem('demoViewAs'); const hit = VIEWERS.find(x => x[2] === v); if (hit) viewAs = hit[0]; } catch (e) {}
 authUser = { email: viewAs };
