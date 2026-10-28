@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   Ladder app — DEMO MODE (Spare Time Indoor Center, tennis or pickleball)
+   Ladder app — DEMO MODE (Spare Time Indoor Facility, tennis or pickleball)
    Stands in for Firebase with an in-memory database filled with made-up
    players, two months of matches, events and more. Nothing here talks to the
    real database; every change is lost on reload.
@@ -9,23 +9,24 @@
 const DAY = 86400000;
 
 /* ───────────── demo club + sport ─────────────
-   The demo shows the real app code branded for Spare Time Indoor Center.
+   The demo shows the real app code branded for the Spare Time Indoor Facility (STI).
    demo/ is tennis, demo/pickleball/ is pickleball (set by window.DEMO_SPORT).
    Wording is swapped on screen as the app draws it, so the live app's code is untouched. */
 const PB = window.DEMO_SPORT === 'pickleball';
 const ROOT = window.DEMO_ROOT || '../';
-const CLUB = 'Spare Time Indoor Center', CLUB_SHORT = 'Spare Time Indoor';
+const CLUB = 'Spare Time Indoor Facility', CLUB_SHORT = 'STI';
 // the demo is shared outside the club: show "Admin" and a made-up email instead of Jordan's
 const NAME_REPL = [
   [/jpboyls@gmail\.com/g, 'ladder.admin@example.com'],
   [/Hi Jordan,/g, 'Hi Admin,'],
+  [/https:\/\/jpboyls-crypto\.github\.io\/gold-river-ladder\/(?:junior\/)?/g, '[STI ladder app link]'],
   [/Jordan Boyls(?:,|\n)\s*Director of Tennis/g, 'Ladder Admin'],
   [/Jordan Boyls['’] box/g, 'the Admin’s box'], [/Jordan Boyls/g, 'Admin'], [/Jordan['’]s/g, 'the admin’s'],
   [/(^|[.!?:]\s+|\n)Jordan\b/g, '$1The admin'], [/\bJordan\b/g, 'the admin'],
   [/admin know\. He can/g, 'admin know. They can'], [/admin and he’ll/g, 'admin and they’ll']
 ];
 const REPL = NAME_REPL.concat([
-  [/Gold River and club-wide Spare Time members/g, 'Spare Time members'], [/Gold River Sports Club/g, CLUB], [/GOLD RIVER SPORTS CLUB/g, CLUB.toUpperCase()], [/Gold River SC\b/g, CLUB_SHORT], [/GOLD RIVER/g, CLUB_SHORT.toUpperCase()], [/Gold River/g, CLUB_SHORT]
+  [/Gold River and club-wide Spare Time members/g, 'Spare Time members'], [/\bGR (Junior )?Ladder\b/g, 'STI $1Ladder'], [/Gold River Sports Club/g, CLUB], [/GOLD RIVER SPORTS CLUB/g, CLUB.toUpperCase()], [/Gold River SC\b/g, CLUB_SHORT], [/GOLD RIVER/g, CLUB_SHORT.toUpperCase()], [/Gold River/g, CLUB_SHORT]
 ].concat(PB ? [
   [/([Bb])est of 3 sets, with a 10-point tiebreak in place of a third set/g, '$1est of 3 games to 11, win by 2'],
   [/a new can of balls and the winner keeps them/g, 'a new ball and the winner keeps it'],

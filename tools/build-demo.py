@@ -28,7 +28,7 @@ def build(sport, folder, up):
     out = re.sub(r'<link rel="manifest"[^>]*>\n?', '', out)
     out = out.replace('href="icon-192.png"', f'href="{up}icon-192.png"')
     out = re.sub(r'<script src="app\.js\?v=([\w-]+)"></script>', rf'<script src="{up}app.js?v=\1"></script>', out)
-    name = 'Spare Time Indoor ' + ('Pickleball' if sport == 'pickleball' else 'Tennis') + ' Ladder'
+    name = 'STI ' + ('Pickleball' if sport == 'pickleball' else 'Tennis') + ' Ladder'
     out = out.replace('<title>Gold River Tennis Ladder</title>',
                       f'<title>{name} — Demo</title>\n<meta name="robots" content="noindex">')
     d = root / folder
