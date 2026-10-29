@@ -72,7 +72,8 @@ let unsubs = [];
 const $ = id => document.getElementById(id);
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const norm = e => (e||'').trim().toLowerCase();
-const today = () => new Date().toISOString().split('T')[0];
+// local date (not UTC), so evenings in California don't count as tomorrow
+const today = () => { const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
 const initialsOf = n => n.split(' ').filter(Boolean).map(x=>x[0]).join('').toUpperCase().slice(0,2);
 
 // ═══════════════════════════════════════════
@@ -1197,13 +1198,14 @@ if(JR){ // Matchplay Days first in the junior event list; no monthly mixers
 // ── standing weekly drop-in sessions: every week, year round (adult ladder only) ──
 // Edit times or wording here; they show at the top of the Events tab with recurring calendar links.
 const WEEKLY = JR ? [] : [
-  {id:'wk-wed', dow:3, every:'Every Wednesday', title:'Wednesday Night Drop-in Doubles', start:'19:00', end:'21:00',
+  {id:'wk-wed', dow:3, every:'Every Wednesday', title:'Wednesday Night Drop-in Doubles', start:'19:00', end:'21:00', levels:'2.5, 3.0, 3.5 and 4.0', price:0,
    description:'Drop-in doubles every Wednesday night, year round. Just show up: we rotate partners so you play with members around your level. Matches can count toward the ladder (enter the score in the app afterwards).'},
-  {id:'wk-sat', dow:6, every:'Every Saturday', title:'Saturday Morning Drop-in Doubles', start:'09:00', end:'12:00',
+  {id:'wk-sat', dow:6, every:'Every Saturday', title:'Saturday Morning Drop-in Doubles', start:'09:00', end:'12:00', levels:'2.5, 3.0, 3.5 and 4.0', price:0,
    description:'Drop-in doubles every Saturday morning, year round. Just show up: we rotate partners so you play with members around your level. Matches can count toward the ladder (enter the score in the app afterwards).'}
 ];
 function nextWeekday(dow,end){ const now=new Date(), d=new Date(now); d.setHours(0,0,0,0); let add=(dow-d.getDay()+7)%7; if(!add&&end&&now.getHours()*60+now.getMinutes()>=+end.slice(0,2)*60+ +end.slice(3)) add=7; d.setDate(d.getDate()+add); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function weeklyEvent(w){ return {id:w.id,title:w.title,date:nextWeekday(w.dow,w.end),start:w.start,end:w.end,location:'Gold River Sports Club',description:w.description,rrule:'FREQ=WEEKLY'}; }
+function nextDropIn(){ return WEEKLY.map(w=>({w,e:weeklyEvent(w)})).sort((a,b)=>(a.e.date+a.e.start).localeCompare(b.e.date+b.e.start))[0]||null; }
 function weeklyCard(w){
   const e=weeklyEvent(w), d=parseDay(e.date);
   return `<div class="ev">
@@ -1213,7 +1215,8 @@ function weeklyCard(w){
         <span class="ev-type" style="background:rgba(58,170,106,.15);color:var(--green)">🎾 Drop-in · every week</span>
         <div class="ev-title">${esc(w.title)}</div>
         <div class="ev-meta">${esc(w.every)} · ${esc(fmtTime(w.start))}–${esc(fmtTime(w.end))}<br>Next: ${esc(d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'}))}<br>${esc(e.location)}</div>
-        <div class="ev-meta" style="color:var(--fg)">No sign-up needed — just drop in</div>
+        ${w.levels?`<div class="ev-meta" style="color:var(--fg)"><b>Levels:</b> ${esc(w.levels)}</div>`:''}
+        <div class="ev-meta" style="color:var(--fg)">💵 <b>Free</b> \u00b7 no sign-up needed, just drop in</div>
       </div>
     </div>
     <div class="ev-desc">${esc(w.description)}</div>
@@ -1308,8 +1311,18 @@ function renderEvents(){
 function togglePast(){ showPast=!showPast; renderEvents(); }
 function renderHomeEvent(){
   const el=$('homeEvent'); if(!el) return;
-  const e=upcomingEvents()[0];
-  if(!e){ el.innerHTML=''; return; }
+  const e=upcomingEvents()[0], nd=nextDropIn();
+  let drop='';
+  if(nd){ const dd=parseDay(nd.e.date), isToday=nd.e.date===today();
+    drop=`<div class="section-head">Next Drop-in</div>
+    <div class="card" style="padding:12px 14px;cursor:pointer;border-left:3px solid var(--green)" onclick="goPage('Events',$('navEvents'))">
+      <div style="display:flex;gap:12px;align-items:center">
+        <div class="ev-date" style="background:rgba(58,170,106,.15)"><div class="mo" style="color:var(--green)">${MONTHS[dd.getMonth()]}</div><div class="dy">${dd.getDate()}</div></div>
+        <div style="flex:1;min-width:0"><div class="ev-title">🎾 ${esc(nd.w.title)}</div><div class="ev-meta">${isToday?'<b style="color:var(--green)">Today</b> \u00b7 ':''}${esc(fmtWhen(nd.e))}</div>
+          <div class="ev-meta">${nd.w.levels?'Levels '+esc(nd.w.levels)+' \u00b7 ':''}<b>Free</b>, just drop in</div></div>
+        <span style="color:var(--fg2);font-size:20px">\u203a</span>
+      </div></div>`; }
+  if(!e){ el.innerHTML=drop; return; }
   const T=EVENT_TYPES[e.type]||EVENT_TYPES.other; const d=parseDay(e.date); const going=(e.rsvps||[]).includes(state.email);
   el.innerHTML=`<div class="section-head">Next Ladder Event</div>
     <div class="card" style="padding:12px 14px;cursor:pointer;border-left:3px solid ${T.color}" onclick="goPage('Events',$('navEvents'))">
@@ -1318,7 +1331,7 @@ function renderHomeEvent(){
         <div style="flex:1;min-width:0"><div class="ev-title">${T.icon} ${esc(e.title)}</div><div class="ev-meta">${esc(fmtWhen(e))}${priceLine(e)?' · '+priceLine(e):''}</div>
           ${going?`<div class="ev-meta" style="color:var(--green);font-weight:600">You\u2019re ${T.who==='entered'?'entered':'going'} \u2713</div>`:''}</div>
         <span style="color:var(--fg2);font-size:20px">\u203a</span>
-      </div></div>`;
+      </div></div>`+drop;
 }
 async function toggleRsvp(id){
   const e=state.events.find(x=>x.id===id); if(!e) return;
@@ -1466,7 +1479,7 @@ function renderRules(){
     q('What’s the Practice tab?',`<p>A place to find hitting partners, with no points involved. Post the days and times you’re free and the kind of session you want; members within your chosen level range see it under <b>Matches My Level</b> and can tap <b>I’m in</b>.</p>`),
     q('When are the quarterly tournaments?',tourneys.length?`<p>${tourneys.map(e=>`<b>${esc(e.title)}</b> — ${esc(fmtWhen(e))}`).join('<br>')}</p><p>Entry is <b>$${TOURNEY_PRICE}</b>. Details, eligibility and sign-up are on the <b>Events</b> tab.</p>`:`<p>One at the end of each quarter, <b>$${TOURNEY_PRICE}</b> entry. Dates, eligibility and sign-up will be posted on the <b>Events</b> tab.</p>`),
     q('What’s the Monthly Ladder Mixer?',`<p>A drop-in social on the <b>last Friday of every month at 6:30 PM</b>: point play, food and drinks. Matches you play can count toward the ladder (enter the score in the app afterwards), or just use it to hit and meet other members. <b>$${MIXER_PRICE} per player.</b> Sign up on the Events tab so Jordan knows how many to expect.</p>`),
-    q('Is there drop-in play?',`<p>Yes, every week, year round: <b>Wednesday nights 7–9 PM</b> and <b>Saturday mornings 9 AM–12 PM</b>, drop-in doubles. No sign-up needed. Matches you play can count toward the ladder; just enter the score in the app afterwards. Both are on the Events tab, where you can add them to your calendar as repeating events.</p>`),
+    q('Is there drop-in play?',`<p>Yes, every week, year round: <b>Wednesday nights 7–9 PM</b> and <b>Saturday mornings 9 AM–12 PM</b>, drop-in doubles for levels <b>2.5, 3.0, 3.5 and 4.0</b>. It\u2019s <b>free</b> and there\u2019s no sign-up. Matches you play can count toward the ladder; just enter the score in the app afterwards. Both are on the Events tab, where you can add them to your calendar as repeating events.</p>`),
     q('How do I sign up for an event?',`<p>Open the <b>Events</b> tab and tap <b>Enter</b> (tournaments) or <b>I’m going</b> (socials). You can also add it to your Apple or Google calendar from there.</p>`),
   ])}
   ${sec('Fees',[
