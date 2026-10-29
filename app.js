@@ -1194,6 +1194,32 @@ if(JR){ // Matchplay Days first in the junior event list; no monthly mixers
   Object.keys(EVENT_TYPES).forEach(k=>delete EVENT_TYPES[k]);
   Object.assign(EVENT_TYPES,{matchplay:{label:'Matchplay Day',icon:'🎾',color:'var(--green)',bg:'rgba(58,170,106,.15)',join:'Sign up',joined:'Signed up \u2713',who:'signed up'}},rest);
 }
+// ── standing weekly drop-in sessions: every week, year round (adult ladder only) ──
+// Edit times or wording here; they show at the top of the Events tab with recurring calendar links.
+const WEEKLY = JR ? [] : [
+  {id:'wk-wed', dow:3, every:'Every Wednesday', title:'Wednesday Night Drop-in Doubles', start:'19:00', end:'21:00',
+   description:'Drop-in doubles every Wednesday night, year round. Just show up: we rotate partners so you play with members around your level. Matches can count toward the ladder (enter the score in the app afterwards).'},
+  {id:'wk-sat', dow:6, every:'Every Saturday', title:'Saturday Morning Drop-in Doubles', start:'09:00', end:'12:00',
+   description:'Drop-in doubles every Saturday morning, year round. Just show up: we rotate partners so you play with members around your level. Matches can count toward the ladder (enter the score in the app afterwards).'}
+];
+function nextWeekday(dow,end){ const now=new Date(), d=new Date(now); d.setHours(0,0,0,0); let add=(dow-d.getDay()+7)%7; if(!add&&end&&now.getHours()*60+now.getMinutes()>=+end.slice(0,2)*60+ +end.slice(3)) add=7; d.setDate(d.getDate()+add); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function weeklyEvent(w){ return {id:w.id,title:w.title,date:nextWeekday(w.dow,w.end),start:w.start,end:w.end,location:'Gold River Sports Club',description:w.description,rrule:'FREQ=WEEKLY'}; }
+function weeklyCard(w){
+  const e=weeklyEvent(w), d=parseDay(e.date);
+  return `<div class="ev">
+    <div class="ev-top">
+      <div class="ev-date" style="background:rgba(58,170,106,.15)"><div class="mo" style="color:var(--green)">${esc(w.every.split(' ')[1].slice(0,3))}</div><div class="dy" style="font-size:15px;line-height:1.6">↻</div></div>
+      <div style="flex:1;min-width:0">
+        <span class="ev-type" style="background:rgba(58,170,106,.15);color:var(--green)">🎾 Drop-in · every week</span>
+        <div class="ev-title">${esc(w.title)}</div>
+        <div class="ev-meta">${esc(w.every)} · ${esc(fmtTime(w.start))}–${esc(fmtTime(w.end))}<br>Next: ${esc(d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'}))}<br>${esc(e.location)}</div>
+        <div class="ev-meta" style="color:var(--fg)">No sign-up needed — just drop in</div>
+      </div>
+    </div>
+    <div class="ev-desc">${esc(w.description)}</div>
+    <div class="ev-actions"><a class="btn btn-secondary btn-sm" href="${icsHref(e)}" download="${esc(w.title.replace(/[^\w\- ]/g,''))}.ics">Apple Calendar</a><a class="btn btn-secondary btn-sm" href="${googleCalUrl(e)}" target="_blank" rel="noopener">Google Calendar</a></div>
+  </div>`;
+}
 let showPast=false;
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function parseDay(d){ const [y,m,dd]=(d||'').split('-').map(Number); return new Date(y,(m||1)-1,dd||1); }
@@ -1205,7 +1231,7 @@ function calStamp(date,time){ return date.replace(/-/g,'')+(time?'T'+time.replac
 function googleCalUrl(e){
   const allDay=!e.start; const start=calStamp(e.date,e.start);
   let end; if(allDay){ const d=parseDay(e.date); d.setDate(d.getDate()+1); end=d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0'); } else end=calStamp(e.date,e.end||e.start);
-  return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(e.title)+'&dates='+start+'/'+end+'&ctz=America/Los_Angeles&location='+encodeURIComponent(e.location||'')+'&details='+encodeURIComponent((e.description||'')+'\n\n'+APP_URL);
+  return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(e.title)+'&dates='+start+'/'+end+'&ctz=America/Los_Angeles&location='+encodeURIComponent(e.location||'')+'&details='+encodeURIComponent((e.description||'')+'\n\n'+APP_URL)+(e.rrule?'&recur='+encodeURIComponent('RRULE:'+e.rrule):'');
 }
 function icsHref(e){
   const esc2=v=>String(v||'').replace(/\\/g,'\\\\').replace(/;/g,'\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
@@ -1213,6 +1239,7 @@ function icsHref(e){
   const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Gold River Tennis Ladder//EN','BEGIN:VEVENT','UID:'+e.id+'@gold-river-ladder','DTSTAMP:'+new Date().toISOString().replace(/[-:]/g,'').split('.')[0]+'Z',
     allDay?'DTSTART;VALUE=DATE:'+calStamp(e.date):'DTSTART;TZID=America/Los_Angeles:'+calStamp(e.date,e.start),
     allDay?'':'DTEND;TZID=America/Los_Angeles:'+calStamp(e.date,e.end||e.start),
+    e.rrule?'RRULE:'+e.rrule:'',
     'SUMMARY:'+esc2(e.title),'LOCATION:'+esc2(e.location),'DESCRIPTION:'+esc2(e.description),'END:VEVENT','END:VCALENDAR'].filter(Boolean);
   return 'data:text/calendar;charset=utf-8,'+encodeURIComponent(lines.join('\r\n'));
 }
@@ -1251,6 +1278,8 @@ function eventCard(e,past){
 }
 function renderEvents(){
   $('addEventBtn').hidden=!state.isAdmin;
+  $('weeklyBox').hidden=!WEEKLY.length;
+  $('weeklyBox').innerHTML=WEEKLY.length?`<div class="section-head" style="padding:4px 0 8px">Every week</div><div class="card">${WEEKLY.map(weeklyCard).join('')}</div><div class="section-head" style="padding:18px 0 0">Coming up</div>`:'';
   const up=upcomingEvents();
   $('eventList').innerHTML=up.length?`<div class="card">${up.map(e=>eventCard(e,false)).join('')}</div>`
     :`<div class="empty"><div class="empty-icon">📅</div><div class="empty-title">No upcoming events yet</div><div class="empty-sub">${JR?(state.isAdmin?'Add a Matchplay Day or junior event with + Add event.':'Matchplay Days and junior events will show up here.'):state.isAdmin?'Add a social or set up the quarterly tournaments.':'Quarterly tournaments and socials will show up here.'}</div></div>`;
@@ -1437,6 +1466,7 @@ function renderRules(){
     q('What’s the Practice tab?',`<p>A place to find hitting partners, with no points involved. Post the days and times you’re free and the kind of session you want; members within your chosen level range see it under <b>Matches My Level</b> and can tap <b>I’m in</b>.</p>`),
     q('When are the quarterly tournaments?',tourneys.length?`<p>${tourneys.map(e=>`<b>${esc(e.title)}</b> — ${esc(fmtWhen(e))}`).join('<br>')}</p><p>Entry is <b>$${TOURNEY_PRICE}</b>. Details, eligibility and sign-up are on the <b>Events</b> tab.</p>`:`<p>One at the end of each quarter, <b>$${TOURNEY_PRICE}</b> entry. Dates, eligibility and sign-up will be posted on the <b>Events</b> tab.</p>`),
     q('What’s the Monthly Ladder Mixer?',`<p>A drop-in social on the <b>last Friday of every month at 6:30 PM</b>: point play, food and drinks. Matches you play can count toward the ladder (enter the score in the app afterwards), or just use it to hit and meet other members. <b>$${MIXER_PRICE} per player.</b> Sign up on the Events tab so Jordan knows how many to expect.</p>`),
+    q('Is there drop-in play?',`<p>Yes, every week, year round: <b>Wednesday nights 7–9 PM</b> and <b>Saturday mornings 9 AM–12 PM</b>, drop-in doubles. No sign-up needed. Matches you play can count toward the ladder; just enter the score in the app afterwards. Both are on the Events tab, where you can add them to your calendar as repeating events.</p>`),
     q('How do I sign up for an event?',`<p>Open the <b>Events</b> tab and tap <b>Enter</b> (tournaments) or <b>I’m going</b> (socials). You can also add it to your Apple or Google calendar from there.</p>`),
   ])}
   ${sec('Fees',[
