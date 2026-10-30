@@ -14,7 +14,9 @@ const DAY = 86400000;
    Wording is swapped on screen as the app draws it, so the live app's code is untouched. */
 const PB = window.DEMO_SPORT === 'pickleball';
 const ROOT = window.DEMO_ROOT || '../';
-const CLUB = 'Spare Time Indoor Facility', CLUB_SHORT = 'STI';
+// window.DEMO_CLUB = 'gr' builds the Gold River copy (demo-gr/): Gold River names, tennis only, Jordan shown as admin
+const GR = window.DEMO_CLUB === 'gr';
+const CLUB = GR ? 'Gold River Sports Club' : 'Spare Time Indoor Facility', CLUB_SHORT = GR ? 'Gold River' : 'STI';
 // the demo is shared outside the club: show "Admin" and a made-up email instead of Jordan's
 const NAME_REPL = [
   [/jpboyls@gmail\.com/g, 'ladder.admin@example.com'],
@@ -25,7 +27,7 @@ const NAME_REPL = [
   [/(^|[.!?:]\s+|\n)Jordan\b/g, '$1The admin'], [/\bJordan\b/g, 'the admin'],
   [/admin know\. He can/g, 'admin know. They can'], [/admin and he’ll/g, 'admin and they’ll']
 ];
-const REPL = NAME_REPL.concat([
+const REPL = GR ? [[/https:\/\/jpboyls-crypto\.github\.io\/gold-river-ladder\/(?:junior\/)?/g, '[Gold River ladder app link]']] : NAME_REPL.concat([
   [/Gold River and club-wide Spare Time members/g, 'Spare Time members'], [/\bGR (Junior )?Ladder\b/g, 'STI $1Ladder'], [/Gold River Sports Club/g, CLUB], [/GOLD RIVER SPORTS CLUB/g, CLUB.toUpperCase()], [/Gold River SC\b/g, CLUB_SHORT], [/GOLD RIVER/g, CLUB_SHORT.toUpperCase()], [/Gold River/g, CLUB_SHORT]
 ].concat(PB ? [
   [/([Bb])est of 3 sets, with a 10-point tiebreak in place of a third set/g, '$1est of 3 games to 11, win by 2'],
@@ -429,11 +431,11 @@ function banner(){
   if (document.getElementById('demoBanner')) return;
   const b = document.createElement('div'); b.id = 'demoBanner';
   b.innerHTML = '<div class="db-row"><span class="db-tag">DEMO DATA</span><span class="db-txt">Made-up players and results. Changes reset when you reload.</span></div>' +
-    '<div class="db-row"><label for="demoSport">Sport</label><select id="demoSport"><option value="tennis"' + (PB ? '' : ' selected') + '>Tennis</option><option value="pickleball"' + (PB ? ' selected' : '') + '>Pickleball</option></select></div>' +
+    (GR ? '' : '<div class="db-row"><label for="demoSport">Sport</label><select id="demoSport"><option value="tennis"' + (PB ? '' : ' selected') + '>Tennis</option><option value="pickleball"' + (PB ? ' selected' : '') + '>Pickleball</option></select></div>') +
     '<div class="db-row"><label for="demoViewAs">Viewing as</label><select id="demoViewAs">' + VIEWERS.map(([id, label, role]) => '<option value="' + role + '"' + (id === viewAs ? ' selected' : '') + '>' + label + '</option>').join('') + '</select></div>';
   document.body.insertBefore(b, document.body.firstChild);
   document.getElementById('demoViewAs').addEventListener('change', e => { try { sessionStorage.setItem('demoViewAs', e.target.value); } catch (x) {} location.hash = ''; location.reload(); });
-  document.getElementById('demoSport').addEventListener('change', e => { location.href = ROOT + 'demo/' + (e.target.value === 'pickleball' ? 'pickleball/' : ''); });
+  if (!GR) document.getElementById('demoSport').addEventListener('change', e => { location.href = ROOT + 'demo/' + (e.target.value === 'pickleball' ? 'pickleball/' : ''); });
   const st = document.createElement('style');
   st.textContent = '#demoBanner{background:#f2c14e;color:#1a1200;padding:6px max(12px,env(safe-area-inset-right,0px)) 6px max(12px,env(safe-area-inset-left,0px));font-size:12.5px;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;justify-content:space-between;position:relative;z-index:150}' +
     '#demoBanner .db-row{display:flex;align-items:center;gap:8px;min-width:0}#demoBanner .db-tag{font-weight:800;letter-spacing:1px;background:#1a1200;color:#f2c14e;padding:2px 7px;border-radius:4px;font-size:11px;flex:none}' +
