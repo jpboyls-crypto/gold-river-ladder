@@ -71,7 +71,7 @@ function fxNode(n){
 new MutationObserver(ms => { for (const m of ms) { if (m.type === 'characterData') fxNode(m.target); else m.addedNodes.forEach(fxNode); } })
   .observe(document.documentElement, { subtree: true, childList: true, characterData: true });
 document.addEventListener('DOMContentLoaded', () => {
-  fxNode(document.body); document.title = fx(document.title);
+  fxNode(document.body);   // the page title (the saved-link name) is set by tools/build-demo.py and left as is
   // welcome messages are built as text for Gmail / Messages
   ['welcomeText', 'welcomeEmail'].forEach(f => { const o = window[f]; if (typeof o === 'function') window[f] = function(){ const r = o.apply(this, arguments); return typeof r === 'string' ? fxS(r) : r; }; });
 });

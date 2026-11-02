@@ -30,9 +30,12 @@ def build(sport, folder, up, data, club='sti'):
     out = re.sub(r'<link rel="manifest"[^>]*>\n?', '', out)
     out = out.replace('href="icon-192.png"', f'href="{up}icon-192.png"')
     out = re.sub(r'<script src="app\.js\?v=([\w-]+)"></script>', rf'<script src="{up}app.js?v=\1"></script>', out)
-    name = ('Gold River ' if club == 'gr' else 'STI ') + ('Pickleball' if sport == 'pickleball' else 'Tennis') + ' Ladder'
+    # the name people see when they save or bookmark the link (and on a phone's home screen)
+    name = 'Gold River Adult Ladder' if club == 'gr' else 'STI ' + ('Pickleball' if sport == 'pickleball' else 'Tennis') + ' Ladder — Demo'
     out = out.replace('<title>Gold River Tennis Ladder</title>',
-                      f'<title>{name} — Demo</title>\n<meta name="robots" content="noindex">')
+                      f'<title>{name}</title>\n<meta name="robots" content="noindex">')
+    out = out.replace('<meta name="apple-mobile-web-app-title" content="GR Ladder">',
+                      f'<meta name="apple-mobile-web-app-title" content="{name if club == "gr" else "STI Ladder"}">')
     d = root / folder
     d.mkdir(parents=True, exist_ok=True)
     (d / 'index.html').write_text(out, encoding='utf-8')
